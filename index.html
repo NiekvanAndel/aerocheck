@@ -1836,6 +1836,21 @@ function exportCSV() {
 // ─────────────────────────────────────────────
 // SCATTER CHART — CdA over tijd
 // ─────────────────────────────────────────────
+
+// Tooltip table row helpers
+function row(label, value) {
+  return `<tr>
+    <td style="color:var(--muted);font-size:9px;letter-spacing:.5px;padding:1px 8px 1px 0;white-space:nowrap;">${label}</td>
+    <td style="text-align:right;white-space:nowrap;">${value}</td>
+  </tr>`;
+}
+function rowHighlight(label, value) {
+  return `<tr style="border-top:1px solid var(--border)">
+    <td style="color:var(--muted);font-size:9px;letter-spacing:.5px;padding:5px 8px 1px 0;white-space:nowrap;">${label}</td>
+    <td style="text-align:right;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;
+               color:var(--accent);padding-top:4px;">${value}</td>
+  </tr>`;
+}
 function renderScatterChart(valid, mean, sd, selectedIndices) {
   const canvas = document.getElementById('scatterCanvas');
   if (!canvas) return;
@@ -2029,38 +2044,121 @@ function renderScatterChart(valid, mean, sd, selectedIndices) {
     const url = actId
       ? `https://www.strava.com/activities/${actId}`
       : `https://www.strava.com/segment_efforts/${r.effort.id}`;
-    canvas._dots.push({ x, y, r: 8, url, label: r.effort.start_date_local?.substring(0,10), cda: r.result.CdA, selected: isSelected });
+
+    // Store all data needed for the rich tooltip (mirrors table columns)
+    canvas._dots.push({
+      x, y, r: 8, url, selected: isSelected,
+      // table columns
+      date:      r.effort.start_date_local?.substring(0, 10) || '—',
+      time:      fmtTime(r.effort.elapsed_time),
+      v_kmh:     r.result.v_kmh.toFixed(1),
+      watt:      r.effort.average_watts || '—',
+      temp:      r.weather.temp?.toFixed(1) ?? '—',
+      wind_kmh:  r.weather.windspeed != null ? (r.weather.windspeed * 3.6).toFixed(1) : '—',
+      wind_dir:  degreesToCardinal(r.weather.winddirection || 0),
+      wind_deg:  Math.round(r.weather.winddirection || 0),
+      crossAngle: Math.round(r.result.windAngleDiff ?? 0),
+      windeff:   r.result.v_wind_head_kmh >= 0
+                   ? '+' + r.result.v_wind_head_kmh.toFixed(1)
+                   : r.result.v_wind_head_kmh.toFixed(1),
+      windeff_sign: r.result.v_wind_head_kmh,
+      rho:       r.result.rho.toFixed(4),
+      cda:       r.result.CdA.toFixed(4),
+      utcHour:   r.weather.hour ?? '?',
+      fallback:  !!r.weather.fallback,
+    });
   });
 
-  // ── TOOLTIP + CLICK ──
+  // ── HTML TOOLTIP (overlaid on canvas) ──
+  // We use a floating div instead of canvas text for rich content.
+  let tooltipEl = document.getElementById('scatterTooltip');
+  if (!tooltipEl) {
+    tooltipEl = document.createElement('div');
+    tooltipEl.id = 'scatterTooltip';
+    tooltipEl.style.cssText = `
+      position:absolute; display:none; pointer-events:none; z-index:10;
+      background:var(--surface); border:1px solid var(--accent);
+      border-radius:3px; padding:12px 14px; min-width:230px;
+      font-family:'IBM Plex Mono',monospace; font-size:10px;
+      box-shadow:0 4px 20px rgba(0,0,0,.35);
+      line-height:1.7; color:var(--text);
+    `;
+    // Insert relative to the scatterCard so absolute positioning works
+    const card = document.getElementById('scatterCard');
+    card.style.position = 'relative';
+    card.appendChild(tooltipEl);
+  }
+
+  canvas.onmouseleave = function() {
+    tooltipEl.style.display = 'none';
+    canvas.style.cursor = 'default';
+  };
+
   canvas.onmousemove = function(e) {
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const cardRect = document.getElementById('scatterCard').getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
     let hit = null;
     for (const d of (canvas._dots || [])) {
-      if (Math.hypot(mx - d.x, my - d.y) < d.r + 4) { hit = d; break; }
+      if (Math.hypot(mx - d.x, my - d.y) < d.r + 5) { hit = d; break; }
     }
+
     canvas.style.cursor = hit ? 'pointer' : 'default';
-    // Redraw with tooltip
-    renderScatterChart(valid, mean, sd, selectedIndices);
-    if (hit) {
-      const tx = Math.min(hit.x + 10, W - 130);
-      const ty = Math.max(hit.y - 38, PAD.top);
-      const tooltipBg = isLight ? '#ffffff' : '#0f1318';
-      const tooltipText = isLight ? '#111827' : '#dde4f0';
-      ctx.fillStyle = tooltipBg;
-      ctx.strokeStyle = ACCENT;
-      ctx.lineWidth = 1;
-      roundRect(ctx, tx, ty, 122, 36, 2);
-      ctx.fill(); ctx.stroke();
-      ctx.fillStyle = ACCENT;
-      ctx.font = `bold 10px "IBM Plex Mono", monospace`;
-      ctx.textAlign = 'left';
-      ctx.fillText(hit.label, tx + 8, ty + 13);
-      ctx.fillStyle = tooltipText;
-      ctx.font = `9px "IBM Plex Mono", monospace`;
-      ctx.fillText(`CdA ${hit.cda.toFixed(4)} m²`, tx + 8, ty + 27);
+
+    if (!hit) {
+      tooltipEl.style.display = 'none';
+      return;
     }
+
+    // Build tooltip HTML — same columns as the table
+    const windColor  = hit.windeff_sign > 1  ? 'var(--red)'
+                     : hit.windeff_sign < -1 ? 'var(--green)'
+                     : 'var(--label)';
+    const fallbackWarn = hit.fallback
+      ? `<div style="color:var(--yellow);font-size:9px;margin-bottom:6px;">⚠ Standaard ISA-atmosfeer (geen weerdata)</div>`
+      : `<div style="font-size:8px;color:var(--muted);margin-bottom:6px;">Weerdata uurwaarde UTC ${hit.utcHour}:00</div>`;
+
+    tooltipEl.innerHTML = `
+      <div style="color:var(--accent);font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;
+                  letter-spacing:1px;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:6px;">
+        ${hit.date}
+        <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px;">→ Strava ↗</span>
+      </div>
+      ${fallbackWarn}
+      <table style="width:100%;border-collapse:collapse;">
+        ${row('Rijtijd',       hit.time)}
+        ${row('Snelheid',      hit.v_kmh + ' km/h')}
+        ${row('Vermogen',      hit.watt + ' W')}
+        ${row('Temperatuur',   hit.temp + ' °C')}
+        ${row('Wind absoluut', hit.wind_kmh + ' km/h ' + hit.wind_dir + ' (' + hit.wind_deg + '°)')}
+        ${row('Windhoek',      hit.crossAngle + '° van rij-as')}
+        ${row('Windeffect',    `<span style="color:${windColor}">${hit.windeff} km/h</span>`)}
+        ${row('Luchtdichtheid',hit.rho + ' kg/m³')}
+        ${rowHighlight('CdA', hit.cda + ' m²')}
+      </table>
+    `;
+
+    tooltipEl.style.display = 'block';
+
+    // Position: to the right of cursor, flip left if too close to edge
+    const tipW = tooltipEl.offsetWidth  || 240;
+    const tipH = tooltipEl.offsetHeight || 200;
+    const canvasLeft = rect.left - cardRect.left;
+    const canvasTop  = rect.top  - cardRect.top;
+    let tx = canvasLeft + mx + 14;
+    let ty = canvasTop  + my - tipH / 2;
+
+    // Keep inside card horizontally
+    const cardW = cardRect.width;
+    if (tx + tipW > cardW - 8) tx = canvasLeft + mx - tipW - 14;
+    if (tx < 4) tx = 4;
+    // Keep inside card vertically
+    if (ty < 4) ty = 4;
+
+    tooltipEl.style.left = tx + 'px';
+    tooltipEl.style.top  = ty + 'px';
   };
   canvas.onclick = function(e) {
     const rect = canvas.getBoundingClientRect();

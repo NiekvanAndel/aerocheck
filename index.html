@@ -723,6 +723,20 @@ select option { background:var(--surface); }
       </div>
     </div>
 
+    <!-- CdA SCATTER CHART -->
+    <div class="card blue" id="scatterCard">
+      <div class="card-title"><span class="card-dot"></span>CdA over tijd</div>
+      <div style="position:relative;width:100%;height:260px;">
+        <canvas id="scatterCanvas" style="width:100%;height:260px;display:block;"></canvas>
+      </div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:9px;color:var(--muted);margin-top:10px;">
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:4px;"></span>Geldig effort (klik = open Strava)</span>
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);opacity:.4;margin-right:4px;"></span>Gefilterd (zijwind / geen vermogen)</span>
+        <span><span style="display:inline-block;width:24px;height:2px;background:var(--orange);margin-right:4px;vertical-align:middle;"></span>Gemiddelde</span>
+        <span><span style="display:inline-block;width:24px;height:2px;border-top:1px dashed var(--muted);margin-right:4px;vertical-align:middle;"></span>±1σ</span>
+      </div>
+    </div>
+
     <!-- PER-EFFORT TABLE -->
     <div class="card" style="border-top-color:var(--muted)">
       <div class="card-title"><span class="card-dot" style="background:var(--muted)"></span>Details per effort</div>
@@ -730,13 +744,14 @@ select option { background:var(--surface); }
         <table id="effortsTable">
           <thead>
             <tr>
-              <th>Datum</th>
+              <th>Datum / Activiteit</th>
               <th>Tijd</th>
               <th>V km/h</th>
               <th>Watt</th>
               <th>Temp °C</th>
               <th>Wind km/h</th>
-              <th>Windeff. m/s</th>
+              <th>Windhoek°</th>
+              <th>Windeff. km/h</th>
               <th>ρ kg/m³</th>
               <th>CdA m²</th>
               <th>Status</th>
@@ -1162,7 +1177,10 @@ async function analyzeSegment() {
     }
 
     setProgress(100, 'Berekening voltooid!');
-    log(`→ ${resultsData.filter(r=>r.result.valid).length} geldige CdA berekeningen`);
+    const validCount = resultsData.filter(r=>r.result.valid).length;
+    const crosswindCount = resultsData.filter(r=>!r.result.valid && r.result.reason?.includes('Zijwind')).length;
+    log(`→ ${validCount} geldige CdA berekeningen`);
+    if (crosswindCount) log(`→ ${crosswindCount} efforts uitgesloten wegens zijwind (>45°)`);
 
     renderResults();
   } catch(e) {
@@ -1197,7 +1215,7 @@ async function getWeather(lat, lon, dateTimeStr) {
   const hour = dt.getUTCHours();
 
   try {
-    const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${date}&end_date=${date}&hourly=temperature_2m,surface_pressure,relativehumidity_2m,windspeed_10m,winddirection_10m&timezone=UTC&wind_speed_unit=kmh`;
+    const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${date}&end_date=${date}&hourly=temperature_2m,surface_pressure,relativehumidity_2m,windspeed_10m,winddirection_10m&timezone=UTC&wind_speed_unit=ms`;
     const res = await fetch(url);
     const data = await res.json();
 
@@ -1247,11 +1265,21 @@ function calcCdA(effort, seg, weather) {
   const rho = calcAirDensity(weather.temp, weather.pressure, weather.humidity);
 
   // Wind correction: effective wind speed along riding direction
+  // weather.windspeed is in m/s (API requested with wind_speed_unit=ms)
   // windEffectComponent returns cos(angle): +1=headwind, -1=tailwind
-  const windMs = (weather.windspeed || 0) / 3.6;
+  const windMs = weather.windspeed || 0;                // already m/s
   const windComp = windEffectComponent(weather.winddirection || 0);
-  const v_wind_head = windMs * windComp; // positive = headwind
-  const v_air = v + v_wind_head;        // effective airspeed
+
+  // Reject efforts where wind is more than 45° off the riding direction
+  // (i.e. significant crosswind). cos(45°) ≈ 0.707 — only keep |windComp| >= cos(45°)
+  const windAngleDiff = ((weather.winddirection - segmentHeading) + 360) % 360;
+  const absAngleDiff = Math.min(windAngleDiff, 360 - windAngleDiff); // 0–180°
+  if (windMs > 1.0 && absAngleDiff > 45) {
+    return { valid: false, reason: `Zijwind gefilterd (${Math.round(absAngleDiff)}° van rijrichting, max 45°)` };
+  }
+
+  const v_wind_head = windMs * windComp;                // m/s, positive = headwind
+  const v_air = v + v_wind_head;                        // effective airspeed m/s
 
   if (v_air <= 0) {
     return { valid: false, reason: 'Effectieve luchtsnelheid ≤ 0 (te sterke staartwind)' };
@@ -1266,9 +1294,6 @@ function calcCdA(effort, seg, weather) {
     return { valid: false, reason: 'Negatieve aerodynamische arbeid (vermogen te laag?)' };
   }
 
-  // F_aero = CdA * 0.5 * rho * v_air^2  →  work over distance d = F_aero * d
-  // But rider moves at v over d; aero force acts against v_air direction.
-  // Using standard virtual elevation / energy balance method:
   // W_aero = CdA * 0.5 * rho * v_air^2 * d
   const CdA = W_aero / (0.5 * rho * v_air * v_air * d);
 
@@ -1283,7 +1308,8 @@ function calcCdA(effort, seg, weather) {
     v_kmh: v * 3.6,
     v_air_kmh: v_air * 3.6,
     v_wind_head_kmh: v_wind_head * 3.6,
-    windspeed_kmh: weather.windspeed || 0,
+    windspeed_kmh: (weather.windspeed || 0) * 3.6,
+    windAngleDiff: absAngleDiff,
     windComp,
     W_aero,
     W_rolling,
@@ -1330,7 +1356,7 @@ function renderResults() {
   const avgTemp = valid.reduce((s,r)=>s+r.weather.temp,0)/valid.length;
   const avgRho = valid.reduce((s,r)=>s+r.result.rho,0)/valid.length;
   const avgWindEff = valid.reduce((s,r)=>s+r.result.v_wind_head_kmh,0)/valid.length;
-  const avgWindSpd = valid.reduce((s,r)=>s+(r.weather.windspeed||0),0)/valid.length;
+  const avgWindSpd = valid.reduce((s,r)=>s+(r.weather.windspeed||0),0)/valid.length; // m/s
 
   document.getElementById('statsGrid').innerHTML = `
     <div class="stat-box"><div class="sl">Efforts</div><div class="sv">${valid.length}</div><div class="su">geldig / ${resultsData.length}</div></div>
@@ -1342,7 +1368,7 @@ function renderResults() {
     <div class="stat-box"><div class="sl">Gem. Vermogen</div><div class="sv">${avgPower.toFixed(0)}</div><div class="su">W</div></div>
     <div class="stat-box"><div class="sl">Gem. Temp.</div><div class="sv">${avgTemp.toFixed(1)}</div><div class="su">°C</div></div>
     <div class="stat-box"><div class="sl">Gem. Luchtdicht.</div><div class="sv">${avgRho.toFixed(4)}</div><div class="su">kg/m³</div></div>
-    <div class="stat-box"><div class="sl">Gem. Windsnelh.</div><div class="sv">${avgWindSpd.toFixed(1)}</div><div class="su">km/h absoluut</div></div>
+    <div class="stat-box"><div class="sl">Gem. Windsnelh.</div><div class="sv">${(avgWindSpd * 3.6).toFixed(1)}</div><div class="su">km/h absoluut</div></div>
     <div class="stat-box"><div class="sl">Gem. Windeffect</div><div class="sv" style="color:${avgWindEff>1?'var(--red)':avgWindEff<-1?'var(--green)':'var(--label)'}">${avgWindEff>=0?'+':''}${avgWindEff.toFixed(1)}</div><div class="su">km/h headwind (+) / tailwind (−)</div></div>
     <div class="stat-box"><div class="sl">Segmentrichting</div><div class="sv">${Math.round(segmentHeading)}°</div><div class="su">${degreesToCardinal(segmentHeading)}</div></div>
   `;
@@ -1364,6 +1390,9 @@ function renderResults() {
   }).join('');
   document.getElementById('histLabels').innerHTML = `<span>${min.toFixed(3)}</span><span>${mean.toFixed(3)}</span><span>${max.toFixed(3)}</span>`;
 
+  // ── SCATTER CHART ──
+  renderScatterChart(valid, mean, sd);
+
   // Table
   const tbody = document.getElementById('effortsBody');
   tbody.innerHTML = resultsData.map(r => {
@@ -1378,10 +1407,11 @@ function renderResults() {
     const statusStr = res.valid
       ? `<span style="color:var(--green)">✓</span>`
       : `<span style="color:var(--red)" title="${res.reason}">✗</span>`;
-    const warnFallback = w.fallback ? '<span style="color:var(--yellow)" title="Standaard weer gebruikt">⚠</span>' : '';
+    const warnFallback = w.fallback ? '<span style="color:var(--yellow)" title="Standaard weerdata gebruikt">⚠</span>' : '';
 
-    // Wind display
-    const windSpeedStr = w.windspeed != null ? w.windspeed.toFixed(1) : '—';
+    // Wind display — weather.windspeed in m/s, convert to km/h for display
+    const windSpeedStr = w.windspeed != null ? (w.windspeed * 3.6).toFixed(1) : '—';
+    const windAngleStr = res.valid ? `${Math.round(res.windAngleDiff)}°` : '—';
     let windEffStr = '—';
     if (res.valid) {
       const vwh = res.v_wind_head_kmh;
@@ -1390,13 +1420,29 @@ function renderResults() {
       windEffStr = `<span style="color:${col}">${sign}${vwh.toFixed(1)}</span>`;
     }
 
-    return `<tr>
-      <td>${dateStr}</td>
+    // Strava activity link — effort has activity_id or we can use the effort id
+    const activityId = ef.activity?.id || ef.activity_id;
+    const stravaUrl = activityId
+      ? `https://www.strava.com/activities/${activityId}`
+      : `https://www.strava.com/segment_efforts/${ef.id}`;
+    const dateCell = `<a href="${stravaUrl}" target="_blank" rel="noopener"
+      style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:5px;"
+      title="Open activiteit op Strava">
+      ${dateStr}
+      <svg width="9" height="9" viewBox="0 0 10 10" fill="none" style="opacity:.6;flex-shrink:0">
+        <path d="M1 9L9 1M9 1H4M9 1V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </a>`;
+
+    const rowStyle = res.valid ? '' : 'opacity:0.45;';
+    return `<tr style="${rowStyle}cursor:pointer;" onclick="window.open('${stravaUrl}','_blank')">
+      <td>${dateCell}</td>
       <td>${timeStr}</td>
       <td>${vStr}</td>
       <td>${ef.average_watts || '—'}</td>
       <td>${w.temp?.toFixed(1) || '—'} ${warnFallback}</td>
       <td>${windSpeedStr} <span style="font-size:8px;color:var(--muted)">${degreesToCardinal(w.winddirection||0)}</span></td>
+      <td>${windAngleStr}</td>
       <td>${windEffStr}</td>
       <td>${rhoStr}</td>
       <td>${cdaStr}</td>
@@ -1408,10 +1454,10 @@ function renderResults() {
   document.getElementById('s-results-wrap').scrollIntoView({ behavior:'smooth' });
 
   // Update compass card avg wind effect box with real data
-  const avgWindEffReal = valid.reduce((s,r)=>s+(r.result.windComp * (r.weather.windspeed||0)),0)/valid.length;
-  const avgWindSpdReal = valid.reduce((s,r)=>s+(r.weather.windspeed||0),0)/valid.length;
+  const avgWindEffReal = valid.reduce((s,r)=>s+(r.result.windComp * (r.weather.windspeed||0)),0)/valid.length; // m/s
+  const avgWindSpdReal = valid.reduce((s,r)=>s+(r.weather.windspeed||0),0)/valid.length; // m/s
   document.getElementById('avgWindEffect').textContent =
-    `${avgWindSpdReal.toFixed(1)} km/h gem. · eff. ${avgWindEffReal>=0?'+':''}${avgWindEffReal.toFixed(1)} km/h`;
+    `${(avgWindSpdReal * 3.6).toFixed(1)} km/h gem. · eff. ${(avgWindEffReal * 3.6)>=0?'+':''}${(avgWindEffReal * 3.6).toFixed(1)} km/h`;
 
   // Show recalculate hint on compass card if results exist
   const existingHint = document.getElementById('recomputeHint');
@@ -1441,7 +1487,7 @@ function exportCSV() {
       w.temp?.toFixed(1) || '',
       w.pressure?.toFixed(1) || '',
       w.humidity?.toFixed(0) || '',
-      w.windspeed?.toFixed(1) || '',
+      w.windspeed != null ? (w.windspeed * 3.6).toFixed(1) : '',
       w.winddirection?.toFixed(0) || '',
       res.valid ? res.v_wind_head_kmh.toFixed(2) : '',
       res.valid ? res.rho.toFixed(5) : '',
@@ -1459,7 +1505,241 @@ function exportCSV() {
 }
 
 // ─────────────────────────────────────────────
-// HERBEREKEN MET NIEUWE RICHTING
+// SCATTER CHART — CdA over tijd
+// ─────────────────────────────────────────────
+function renderScatterChart(valid, mean, sd) {
+  const canvas = document.getElementById('scatterCanvas');
+  if (!canvas) return;
+
+  // Set physical pixel size for sharpness
+  const W = canvas.offsetWidth || 800;
+  const H = 260;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // Layout
+  const PAD = { top: 16, right: 20, bottom: 48, left: 58 };
+  const cw = W - PAD.left - PAD.right;
+  const ch = H - PAD.top  - PAD.bottom;
+
+  // Colours (CSS vars not available on canvas — use literals)
+  const BG         = '#0f1318';
+  const GRID_COL   = '#1e2738';
+  const ACCENT     = '#00d4ff';
+  const ORANGE     = '#ff6b35';
+  const MUTED      = '#4a5568';
+  const TEXT_COL   = '#7a8899';
+  const DOT_SKIP   = '#2a3550';
+
+  // Background
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
+
+  // All efforts — build date range from ALL resultsData
+  const allDates = resultsData.map(r => new Date(r.effort.start_date_local).getTime()).filter(Boolean);
+  if (!allDates.length) return;
+  const tMin = Math.min(...allDates);
+  const tMax = Math.max(...allDates);
+  const tRange = tMax - tMin || 1;
+
+  // Y range — from valid CdA values
+  const cdas = valid.map(r => r.result.CdA);
+  const cdaMin = Math.max(0, Math.min(...cdas) - 0.04);
+  const cdaMax = Math.min(1.0, Math.max(...cdas) + 0.04);
+  const cdaRange = cdaMax - cdaMin || 0.1;
+
+  function xPos(ts)  { return PAD.left + ((ts - tMin) / tRange) * cw; }
+  function yPos(cda) { return PAD.top  + (1 - (cda - cdaMin) / cdaRange) * ch; }
+
+  // ── GRID LINES (Y) ──
+  const ySteps = 5;
+  ctx.textAlign = 'right';
+  ctx.font = `${9 * dpr / dpr}px "IBM Plex Mono", monospace`;
+  ctx.fillStyle = TEXT_COL;
+  for (let i = 0; i <= ySteps; i++) {
+    const cda = cdaMin + (i / ySteps) * cdaRange;
+    const y = yPos(cda);
+    ctx.strokeStyle = GRID_COL;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD.left, y);
+    ctx.lineTo(PAD.left + cw, y);
+    ctx.stroke();
+    ctx.fillStyle = TEXT_COL;
+    ctx.fillText(cda.toFixed(3), PAD.left - 6, y + 3.5);
+  }
+
+  // ── MEAN LINE ──
+  const yMean = yPos(mean);
+  ctx.strokeStyle = ORANGE;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(PAD.left, yMean);
+  ctx.lineTo(PAD.left + cw, yMean);
+  ctx.stroke();
+  ctx.fillStyle = ORANGE;
+  ctx.font = `bold 9px "IBM Plex Mono", monospace`;
+  ctx.textAlign = 'left';
+  ctx.fillText(`μ ${mean.toFixed(4)}`, PAD.left + cw + 3, yMean + 3);
+
+  // ── ±1σ BAND ──
+  const yHi = yPos(mean + sd);
+  const yLo = yPos(mean - sd);
+  ctx.fillStyle = 'rgba(255,107,53,0.07)';
+  ctx.fillRect(PAD.left, yHi, cw, yLo - yHi);
+  ctx.strokeStyle = 'rgba(255,107,53,0.25)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 4]);
+  ctx.beginPath(); ctx.moveTo(PAD.left, yHi); ctx.lineTo(PAD.left + cw, yHi); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PAD.left, yLo); ctx.lineTo(PAD.left + cw, yLo); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // ── X AXIS LABELS (months/years) ──
+  ctx.fillStyle = TEXT_COL;
+  ctx.font = `9px "IBM Plex Mono", monospace`;
+  ctx.textAlign = 'center';
+  // Generate month tick positions
+  const dtMin = new Date(tMin);
+  const dtMax = new Date(tMax);
+  let cur = new Date(dtMin.getFullYear(), dtMin.getMonth(), 1);
+  const monthNames = ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
+  let lastYear = null;
+  while (cur <= dtMax) {
+    const x = xPos(cur.getTime());
+    if (x >= PAD.left && x <= PAD.left + cw) {
+      ctx.strokeStyle = GRID_COL;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, PAD.top);
+      ctx.lineTo(x, PAD.top + ch);
+      ctx.stroke();
+      ctx.fillStyle = cur.getMonth() === 0 ? '#8a95a8' : TEXT_COL;
+      ctx.fillText(monthNames[cur.getMonth()], x, H - PAD.bottom + 14);
+      if (cur.getFullYear() !== lastYear) {
+        ctx.fillStyle = '#8a95a8';
+        ctx.font = `bold 9px "IBM Plex Mono", monospace`;
+        ctx.fillText(cur.getFullYear(), x, H - PAD.bottom + 28);
+        ctx.font = `9px "IBM Plex Mono", monospace`;
+        lastYear = cur.getFullYear();
+      }
+    }
+    cur.setMonth(cur.getMonth() + 1);
+  }
+
+  // ── AXIS LINES ──
+  ctx.strokeStyle = GRID_COL;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(PAD.left, PAD.top);
+  ctx.lineTo(PAD.left, PAD.top + ch);
+  ctx.lineTo(PAD.left + cw, PAD.top + ch);
+  ctx.stroke();
+
+  // ── DOTS — filtered/invalid (dim) ──
+  resultsData.forEach(r => {
+    if (r.result.valid) return;
+    const ts = new Date(r.effort.start_date_local).getTime();
+    if (!ts) return;
+    const x = xPos(ts);
+    // Plot at mean height for filtered
+    const y = yPos(mean);
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = DOT_SKIP;
+    ctx.fill();
+  });
+
+  // ── DOTS — valid, with hover tracking ──
+  // Store dot positions for click handling
+  canvas._dots = [];
+  valid.forEach(r => {
+    const ts = new Date(r.effort.start_date_local).getTime();
+    if (!ts) return;
+    const x = xPos(ts);
+    const y = yPos(r.result.CdA);
+    // Glow
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, 10);
+    grad.addColorStop(0, 'rgba(0,220,255,0.25)');
+    grad.addColorStop(1, 'rgba(0,220,255,0)');
+    ctx.beginPath();
+    ctx.arc(x, y, 10, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    // Dot
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = BG;
+    ctx.fill();
+    ctx.strokeStyle = ACCENT;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const actId = r.effort.activity?.id || r.effort.activity_id;
+    const url = actId
+      ? `https://www.strava.com/activities/${actId}`
+      : `https://www.strava.com/segment_efforts/${r.effort.id}`;
+    canvas._dots.push({ x, y, r: 8, url, label: r.effort.start_date_local?.substring(0,10), cda: r.result.CdA });
+  });
+
+  // ── TOOLTIP + CLICK ──
+  canvas.onmousemove = function(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    let hit = null;
+    for (const d of (canvas._dots || [])) {
+      if (Math.hypot(mx - d.x, my - d.y) < d.r + 4) { hit = d; break; }
+    }
+    canvas.style.cursor = hit ? 'pointer' : 'default';
+    // Redraw with tooltip
+    renderScatterChart(valid, mean, sd);
+    if (hit) {
+      const tx = Math.min(hit.x + 10, W - 130);
+      const ty = Math.max(hit.y - 38, PAD.top);
+      ctx.fillStyle = '#0f1318';
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 1;
+      roundRect(ctx, tx, ty, 122, 36, 2);
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = ACCENT;
+      ctx.font = `bold 10px "IBM Plex Mono", monospace`;
+      ctx.textAlign = 'left';
+      ctx.fillText(hit.label, tx + 8, ty + 13);
+      ctx.fillStyle = '#dde4f0';
+      ctx.font = `9px "IBM Plex Mono", monospace`;
+      ctx.fillText(`CdA ${hit.cda.toFixed(4)} m²`, tx + 8, ty + 27);
+    }
+  };
+  canvas.onclick = function(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    for (const d of (canvas._dots || [])) {
+      if (Math.hypot(mx - d.x, my - d.y) < d.r + 4) {
+        window.open(d.url, '_blank');
+        break;
+      }
+    }
+  };
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
 // ─────────────────────────────────────────────
 function recomputeWithNewHeading() {
   if (!resultsData.length || !selectedSegment) return;
@@ -1526,6 +1806,17 @@ function fmtTime(secs) {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Redraw chart on resize
+window.addEventListener('resize', () => {
+  if (!resultsData.length) return;
+  const valid = resultsData.filter(r => r.result.valid);
+  if (!valid.length) return;
+  const cdas = valid.map(r => r.result.CdA);
+  const mean = cdas.reduce((a,b)=>a+b,0)/cdas.length;
+  const variance = cdas.reduce((s,v)=>s+(v-mean)**2,0)/cdas.length;
+  renderScatterChart(valid, mean, Math.sqrt(variance));
+});
 
 function qualityLabel(cda) {
   if (cda < 0.18) return { text: 'EXTREEM AERO', bg: 'rgba(57,255,20,.15)', color: '#39ff14' };

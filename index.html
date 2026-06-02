@@ -21,7 +21,50 @@
   --text: #dde4f0;
   --muted: #4a5568;
   --label: #7a8899;
+  --grid-line: rgba(0,212,255,0.025);
 }
+
+/* ── LIGHT MODE ── */
+html.light {
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --surface2: #f5f7fa;
+  --surface3: #eaecf0;
+  --border: #d0d7e2;
+  --accent: #0098c0;
+  --orange: #e05520;
+  --green: #1d9900;
+  --yellow: #b89000;
+  --red: #d42020;
+  --text: #111827;
+  --muted: #8a96a8;
+  --label: #556070;
+  --grid-line: rgba(0,120,180,0.06);
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 14px 6px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--label);
+  transition: border-color .2s, background .2s, color .2s;
+}
+.theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.theme-toggle .toggle-icon { font-size: 14px; line-height: 1; transition: transform .3s; }
+html.light .theme-toggle .toggle-icon { transform: rotate(180deg); }
 * { margin:0; padding:0; box-sizing:border-box; }
 html { scroll-behavior: smooth; }
 body {
@@ -30,18 +73,34 @@ body {
   font-family: 'IBM Plex Mono', monospace;
   min-height: 100vh;
   overflow-x: hidden;
+  transition: background .25s, color .25s;
 }
 body::before {
   content:'';
   position:fixed;
   inset:0;
   background-image:
-    linear-gradient(rgba(0,212,255,0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,212,255,0.025) 1px, transparent 1px);
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 48px 48px;
   pointer-events:none;
   z-index:0;
+  transition: background-image .3s;
 }
+
+/* Light mode specific overrides */
+html.light body { background: var(--bg); }
+html.light .tire-badge { background: #eef6ee; border-color: rgba(29,153,0,.25); }
+html.light .tire-name { color: var(--green); }
+html.light .tire-sub { color: #4a7a4a; }
+html.light .tire-crr { color: var(--green); }
+html.light .hist-bar { opacity: .85; }
+html.light .seg-item { background: var(--surface2); }
+html.light .seg-item:hover, html.light .seg-item.selected { background: var(--surface3); }
+html.light .result-hero .rh-sd { color: var(--label); }
+html.light .step-num { color: var(--border); }
+html.light .alert.info { background: rgba(0,152,192,.07); border-color: rgba(0,152,192,.3); color: var(--accent); }
+html.light code { background: var(--surface3); color: var(--label); padding: 1px 4px; border-radius: 2px; }
 .wrap {
   position:relative;
   z-index:1;
@@ -74,6 +133,7 @@ h1 .strava-color { color:var(--orange); }
   margin-bottom:14px;
   position:relative;
   overflow:hidden;
+  transition: background .25s, border-color .25s;
 }
 .card::after {
   content:'';
@@ -496,10 +556,14 @@ select option { background:var(--surface); }
 <body>
 <div class="wrap">
 
-<header>
+<header style="position:relative;">
   <div class="tag">// velodrom analytics</div>
   <h1><em>CdA</em> <span class="strava-color">STRAVA</span><br>ANALYZER</h1>
   <p class="sub">SEGMENT · HISTORISCHE WEER · STATISTISCHE ANALYSE · GP5000 32MM TL @ 4 BAR</p>
+  <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Wissel tussen licht en donker thema">
+    <span class="toggle-icon" id="themeIcon">☀️</span>
+    <span id="themeLabel">LICHT</span>
+  </button>
 </header>
 
 <!-- STATUS BAR -->
@@ -799,6 +863,7 @@ let clientSecret = '';
 // ─────────────────────────────────────────────
 window.onload = async function() {
   document.getElementById('callbackDomain').textContent = window.location.hostname || window.location.host;
+  initTheme();
 
   // Restore credentials from sessionStorage
   clientId = sessionStorage.getItem('strava_cid') || '';
@@ -1527,14 +1592,15 @@ function renderScatterChart(valid, mean, sd) {
   const cw = W - PAD.left - PAD.right;
   const ch = H - PAD.top  - PAD.bottom;
 
-  // Colours (CSS vars not available on canvas — use literals)
-  const BG         = '#0f1318';
-  const GRID_COL   = '#1e2738';
-  const ACCENT     = '#00d4ff';
-  const ORANGE     = '#ff6b35';
-  const MUTED      = '#4a5568';
-  const TEXT_COL   = '#7a8899';
-  const DOT_SKIP   = '#2a3550';
+  // Colours — read from CSS variables so they respect light/dark theme
+  const cs = getComputedStyle(document.documentElement);
+  const BG       = cs.getPropertyValue('--surface').trim()  || '#0f1318';
+  const GRID_COL = cs.getPropertyValue('--border').trim()   || '#1e2738';
+  const ACCENT   = cs.getPropertyValue('--accent').trim()   || '#00d4ff';
+  const ORANGE   = cs.getPropertyValue('--orange').trim()   || '#ff6b35';
+  const TEXT_COL = cs.getPropertyValue('--label').trim()    || '#7a8899';
+  const DOT_SKIP = cs.getPropertyValue('--surface3').trim() || '#1c2230';
+  const isLight  = document.documentElement.classList.contains('light');
 
   // Background
   ctx.fillStyle = BG;
@@ -1664,9 +1730,10 @@ function renderScatterChart(valid, mean, sd) {
     const x = xPos(ts);
     const y = yPos(r.result.CdA);
     // Glow
+    const glowColor = isLight ? 'rgba(0,120,180,' : 'rgba(0,220,255,';
     const grad = ctx.createRadialGradient(x, y, 0, x, y, 10);
-    grad.addColorStop(0, 'rgba(0,220,255,0.25)');
-    grad.addColorStop(1, 'rgba(0,220,255,0)');
+    grad.addColorStop(0, glowColor + '0.2)');
+    grad.addColorStop(1, glowColor + '0)');
     ctx.beginPath();
     ctx.arc(x, y, 10, 0, Math.PI * 2);
     ctx.fillStyle = grad;
@@ -1701,7 +1768,9 @@ function renderScatterChart(valid, mean, sd) {
     if (hit) {
       const tx = Math.min(hit.x + 10, W - 130);
       const ty = Math.max(hit.y - 38, PAD.top);
-      ctx.fillStyle = '#0f1318';
+      const tooltipBg = isLight ? '#ffffff' : '#0f1318';
+      const tooltipText = isLight ? '#111827' : '#dde4f0';
+      ctx.fillStyle = tooltipBg;
       ctx.strokeStyle = ACCENT;
       ctx.lineWidth = 1;
       roundRect(ctx, tx, ty, 122, 36, 2);
@@ -1710,7 +1779,7 @@ function renderScatterChart(valid, mean, sd) {
       ctx.font = `bold 10px "IBM Plex Mono", monospace`;
       ctx.textAlign = 'left';
       ctx.fillText(hit.label, tx + 8, ty + 13);
-      ctx.fillStyle = '#dde4f0';
+      ctx.fillStyle = tooltipText;
       ctx.font = `9px "IBM Plex Mono", monospace`;
       ctx.fillText(`CdA ${hit.cda.toFixed(4)} m²`, tx + 8, ty + 27);
     }
@@ -1806,6 +1875,36 @@ function fmtTime(secs) {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─────────────────────────────────────────────
+// THEME TOGGLE
+// ─────────────────────────────────────────────
+function toggleTheme() {
+  const isLight = document.documentElement.classList.toggle('light');
+  localStorage.setItem('cda_theme', isLight ? 'light' : 'dark');
+  document.getElementById('themeIcon').textContent  = isLight ? '🌙' : '☀️';
+  document.getElementById('themeLabel').textContent = isLight ? 'DONKER' : 'LICHT';
+  // Redraw scatter chart with new colours if results exist
+  if (resultsData.length) {
+    const valid = resultsData.filter(r => r.result.valid);
+    if (valid.length) {
+      const cdas = valid.map(r => r.result.CdA);
+      const mean = cdas.reduce((a,b)=>a+b,0)/cdas.length;
+      const variance = cdas.reduce((s,v)=>s+(v-mean)**2,0)/cdas.length;
+      renderScatterChart(valid, mean, Math.sqrt(variance));
+    }
+  }
+}
+
+function initTheme() {
+  const saved = localStorage.getItem('cda_theme');
+  const preferLight = saved === 'light' || (!saved && window.matchMedia('(prefers-color-scheme: light)').matches);
+  if (preferLight) {
+    document.documentElement.classList.add('light');
+    document.getElementById('themeIcon').textContent  = '🌙';
+    document.getElementById('themeLabel').textContent = 'DONKER';
+  }
+}
 
 // Redraw chart on resize
 window.addEventListener('resize', () => {

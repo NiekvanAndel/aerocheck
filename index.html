@@ -478,6 +478,32 @@ select option { background:var(--surface); }
 .note { font-size:9px; color:var(--muted); letter-spacing:.5px; line-height:1.7; padding-top:14px; border-top:1px solid var(--border); margin-top:14px; }
 .note strong { color:var(--orange); }
 
+/* COLUMN LEGEND */
+.legend-item {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 11px 13px;
+  transition: border-color .2s;
+}
+.legend-item:hover { border-color: var(--accent); }
+.legend-col {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+.legend-desc {
+  font-size: 10px;
+  color: var(--label);
+  line-height: 1.6;
+}
+.legend-desc strong { color: var(--text); }
+.legend-desc em { color: var(--muted); font-style: normal; }
+
 /* WIND DIRECTION CARD */
 .wind-card { display:none; }
 .wind-card.visible { display:block; }
@@ -803,7 +829,88 @@ select option { background:var(--surface); }
 
     <!-- PER-EFFORT TABLE -->
     <div class="card" style="border-top-color:var(--muted)">
-      <div class="card-title"><span class="card-dot" style="background:var(--muted)"></span>Details per effort</div>
+      <div class="card-title"><span class="card-dot" style="background:var(--muted)"></span>Details per effort
+        <button onclick="toggleLegend()" id="legendToggleBtn"
+          style="margin-left:auto;background:none;border:1px solid var(--border);color:var(--label);
+                 font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;
+                 padding:4px 10px;border-radius:2px;cursor:pointer;transition:border-color .2s,color .2s;"
+          onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
+          onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--label)'">
+          ? KOLOMLEGENDA
+        </button>
+      </div>
+
+      <!-- COLUMN LEGEND -->
+      <div id="columnLegend" style="display:none;margin-bottom:18px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-bottom:6px;">
+
+          <div class="legend-item">
+            <div class="legend-col">Datum / Activiteit</div>
+            <div class="legend-desc">Datum waarop de effort is gereden. Klik op de rij of de link om de bijbehorende activiteit op Strava te openen.</div>
+          </div>
+
+          <div class="legend-item">
+            <div class="legend-col">Tijd</div>
+            <div class="legend-desc">Rijtijd over het segment in mm:ss. Kortere tijd bij gelijk vermogen = lagere luchtweerstand. Wordt gebruikt als <em>t</em> in de energiebalans.</div>
+          </div>
+
+          <div class="legend-item">
+            <div class="legend-col">V km/h</div>
+            <div class="legend-desc">Gemiddelde rijsnelheid over het segment = segmentafstand ÷ rijtijd. Dit is de <em>grondsnelheid</em> van de rijder, niet de luchtsnelheid.</div>
+          </div>
+
+          <div class="legend-item">
+            <div class="legend-col">Watt</div>
+            <div class="legend-desc">Gemiddeld vermogen over het segment zoals gemeten door de powermeter. Hogere waarde = meer totale arbeid, wat de CdA-berekening stuurt. Efforts zonder vermogen worden overgeslagen.</div>
+          </div>
+
+          <div class="legend-item">
+            <div class="legend-col">Temp °C</div>
+            <div class="legend-desc">Luchttemperatuur op het moment van rijden (uurgemiddelde, Open-Meteo). Warme lucht is minder dicht → lagere luchtweerstand bij gelijke CdA. <span style="color:var(--yellow)">⚠</span> = historische data niet beschikbaar, standaard 15°C gebruikt.</div>
+          </div>
+
+          <div class="legend-item">
+            <div class="legend-col">Wind km/h</div>
+            <div class="legend-desc">Absolute windsnelheid op 10m hoogte (uurgemiddelde, Open-Meteo), met windstreek (bv. NW). Dit is de ruwe meting — nog niet gecorrigeerd voor rijrichting.</div>
+          </div>
+
+          <div class="legend-item">
+            <div class="legend-col">Windhoek °</div>
+            <div class="legend-desc">Hoek tussen de windvector en de rijrichting, gemeten van de mee/tegenwind-as. <strong>0° = perfecte mee- of tegenwind</strong>, 90° = pure zijwind. Efforts met windhoek &gt;45° worden gefilterd (te veel zijwindcomponent die niet nauwkeurig te corrigeren is).</div>
+          </div>
+
+          <div class="legend-item">
+            <div class="legend-col">Windeff. km/h</div>
+            <div class="legend-desc">Effectieve windcomponent langs de rijrichting = windsnelheid × cos(windhoek). <span style="color:var(--red)">Rood positief</span> = tegenwind (verhoogt luchtsnelheid, verhoogt weerstand). <span style="color:var(--green)">Groen negatief</span> = meewind (verlaagt luchtsnelheid). Dit getal wordt opgeteld bij de rijsnelheid om de luchtsnelheid te berekenen.</div>
+          </div>
+
+          <div class="legend-item">
+            <div class="legend-col">ρ kg/m³</div>
+            <div class="legend-desc">Luchtdichtheid berekend uit temperatuur, luchtdruk en luchtvochtigheid (Magnus-formule). Standaard ISA-waarde is 1.225 kg/m³ bij 15°C, 1013 hPa. Hogere dichtheid = meer luchtweerstand bij gelijke CdA en snelheid.</div>
+          </div>
+
+          <div class="legend-item">
+            <div class="legend-col">CdA m²</div>
+            <div class="legend-desc">De berekende aerodynamische weerstandscoëfficiënt voor dit effort. Lagere waarde = aerodynamischer. Typische referentiewaarden: &lt;0.24 m² aero/TT-positie, 0.24–0.30 m² drops, 0.30–0.38 m² hoods, &gt;0.38 m² rechtop. Kleurcode loopt van groen (laag) naar rood (hoog).</div>
+          </div>
+
+          <div class="legend-item">
+            <div class="legend-col">Status</div>
+            <div class="legend-desc"><span style="color:var(--green)">✓</span> = geldige berekening meegenomen in het gemiddelde. <span style="color:var(--red)">✗</span> = uitgesloten. Zweef over het kruisje voor de reden: zijwind gefilterd, geen vermogensdata, negatieve aerodynamische arbeid, of onrealistisch resultaat.</div>
+          </div>
+
+        </div>
+
+        <div style="font-size:9px;color:var(--muted);line-height:1.8;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:2px;">
+          <strong style="color:var(--orange)">Formule:</strong>
+          CdA = (P·t − m·g·Crr·d − m·g·Δh) / (½·ρ·v<sub>air</sub>²·d)
+          &nbsp;·&nbsp;
+          v<sub>air</sub> = v<sub>rijder</sub> + v<sub>wind</sub>·cos(windhoek)
+          &nbsp;·&nbsp;
+          m = 70 kg &nbsp;·&nbsp; Crr = 0.0035 &nbsp;·&nbsp; d = segmentafstand &nbsp;·&nbsp; Δh = hoogteverschil
+        </div>
+      </div>
+
       <div class="eff-results">
         <table id="effortsTable">
           <thead>
@@ -1335,21 +1442,42 @@ function calcCdA(effort, seg, weather) {
   const windMs = weather.windspeed || 0;                // already m/s
   const windComp = windEffectComponent(weather.winddirection || 0);
 
-  // Crosswind filter: only reject true sidewinds.
-  // Meteorological convention: windDirection = where wind comes FROM.
-  // Convert to wind travel direction (where wind goes TO) = windDirection + 180°.
-  // Then compare wind travel direction to riding direction.
-  // A tailwind (wind coming from behind = same as riding direction) gives 0° → keep.
-  // A headwind (wind coming from ahead) gives 180° → keep (it's aligned, just opposing).
-  // Pure crosswind gives 90° → reject.
-  // Filter: reject if the angle between wind travel vector and riding axis > 45°
-  // i.e. keep only if the wind is within 45° of head- or tailwind axis.
-  const windTravelDir = (weather.winddirection + 180) % 360;
-  const windAxisDiff  = ((windTravelDir - segmentHeading) + 360) % 360; // 0–360°
-  // Fold into 0–180°, then measure distance from 0° (tailwind) or 180° (headwind)
-  const windAligned   = Math.min(windAxisDiff, 360 - windAxisDiff); // 0° = tailwind/headwind axis, 90° = pure side
-  if (windMs > 1.0 && windAligned > 45) {
-    return { valid: false, reason: `Zijwind gefilterd (${Math.round(windAligned)}° van rij-as, max 45°)` };
+  // ── CROSSWIND FILTER ──
+  // Meteorological convention: weather.winddirection = direction wind comes FROM.
+  // We want to know how aligned the wind axis is with the riding axis.
+  //
+  // Key insight: wind is aligned if it is roughly head- OR tailwind.
+  // Both count because cos(0°)=+1 (headwind) and cos(180°)=-1 (tailwind) are
+  // both fully along the riding axis — only 90° (pure crosswind) is bad.
+  //
+  // Method: compute the acute angle between the wind axis and the riding axis.
+  //   diff = (windDirection - segmentHeading + 360) % 360   → 0–360°
+  //   fold to 0–180° (wind axis is bidirectional, 135° same as 45°):
+  //     if diff > 180°, mirror:  diff = 360 - diff          → 0–180°
+  //   now 0° = headwind, 180° = tailwind, 90° = pure crosswind
+  //   convert to distance from nearest axis end (head or tail):
+  //     crossAngle = min(diff, 180 - diff)                  → 0–90°
+  //     0° = perfectly aligned (head or tail), 90° = pure crosswind
+  //   filter if crossAngle > 45° AND wind is meaningful (> 1 m/s)
+  //
+  // Example check — riding 315°, wind FROM 135° (ZO = tailwind):
+  //   diff = (135 - 315 + 360) % 360 = 180°  → fold: 180°
+  //   crossAngle = min(180, 0) = 0° → ✓ keep (perfect tailwind)
+  //
+  // Example check — riding 315°, wind FROM 225° (ZW = crosswind):
+  //   diff = (225 - 315 + 360) % 360 = 270° → fold: 360-270 = 90°
+  //   crossAngle = min(90, 90) = 90° → ✗ filter
+  //
+  // Example check — riding 315°, wind FROM 315° (NW = headwind):
+  //   diff = (315 - 315 + 360) % 360 = 0°   → fold: 0°
+  //   crossAngle = min(0, 180) = 0° → ✓ keep (perfect headwind)
+
+  let diff = ((weather.winddirection - segmentHeading) + 360) % 360; // 0–360°
+  if (diff > 180) diff = 360 - diff;                                  // fold to 0–180°
+  const crossAngle = Math.min(diff, 180 - diff);                      // 0–90°: 0=aligned, 90=pure side
+
+  if (windMs > 1.0 && crossAngle > 45) {
+    return { valid: false, reason: `Zijwind gefilterd (${Math.round(crossAngle)}° van rij-as, max 45°)` };
   }
 
   const v_wind_head = windMs * windComp;                // m/s, positive = headwind
@@ -1383,7 +1511,7 @@ function calcCdA(effort, seg, weather) {
     v_air_kmh: v_air * 3.6,
     v_wind_head_kmh: v_wind_head * 3.6,
     windspeed_kmh: (weather.windspeed || 0) * 3.6,
-    windAngleDiff: windAligned,   // 0° = head/tailwind, 90° = pure crosswind
+    windAngleDiff: crossAngle,    // 0° = head/tailwind, 90° = pure crosswind
     windComp,
     W_aero,
     W_rolling,
@@ -1871,6 +1999,16 @@ function showAlert(type, msg, sectionId) {
 function goToSegment() {
   showSection('s-segment');
   document.getElementById('s-results-wrap').style.display = 'none';
+}
+
+function toggleLegend() {
+  const el = document.getElementById('columnLegend');
+  const btn = document.getElementById('legendToggleBtn');
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'block';
+  btn.textContent = isOpen ? '? KOLOMLEGENDA' : '✕ SLUIT LEGENDA';
+  btn.style.color = isOpen ? 'var(--label)' : 'var(--accent)';
+  btn.style.borderColor = isOpen ? 'var(--border)' : 'var(--accent)';
 }
 
 function escHtml(str) {

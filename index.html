@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CdA Analyzer — Strava</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #080b0e;
+  --surface: #0f1318;
+  --surface2: #161b22;
+  --surface3: #1c2230;
+  --border: #1e2738;
+  --accent: #00d4ff;
+  --orange: #ff6b35;
+  --green: #39ff14;
+  --yellow: #ffd60a;
+  --red: #ff3b3b;
+  --text: #dde4f0;
+  --muted: #4a5568;
+  --label: #7a8899;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+body::before {
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events:none;
+  z-index:0;
+}
+.wrap {
+  position:relative;
+  z-index:1;
+  max-width:960px;
+  margin:0 auto;
+  padding:32px 20px 80px;
+}
+
+/* HEADER */
+header { margin-bottom:36px; border-bottom:1px solid var(--border); padding-bottom:24px; }
+.tag { font-size:9px; letter-spacing:4px; color:var(--accent); text-transform:uppercase; margin-bottom:8px; }
+h1 {
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:clamp(44px,9vw,80px);
+  font-weight:900;
+  line-height:.9;
+  letter-spacing:-2px;
+  text-transform:uppercase;
+}
+h1 em { color:var(--accent); font-style:normal; }
+h1 .strava-color { color:var(--orange); }
+.sub { font-size:10px; color:var(--muted); margin-top:10px; letter-spacing:1px; }
+
+/* CARDS */
+.card {
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:2px;
+  padding:24px;
+  margin-bottom:14px;
+  position:relative;
+  overflow:hidden;
+}
+.card::after {
+  content:'';
+  position:absolute;
+  top:0; left:0; right:0; height:2px;
+}
+.card.orange::after { background:var(--orange); }
+.card.blue::after { background:var(--accent); }
+.card.green::after { background:var(--green); }
+.card.yellow::after { background:var(--yellow); }
+
+.card-title {
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:3px;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin-bottom:18px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.card-dot { width:5px; height:5px; border-radius:50%; }
+.orange .card-dot { background:var(--orange); }
+.blue .card-dot { background:var(--accent); }
+.green .card-dot { background:var(--green); }
+.yellow .card-dot { background:var(--yellow); }
+
+/* FORM ELEMENTS */
+.field { display:flex; flex-direction:column; gap:5px; }
+label { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--label); }
+input, select {
+  background:var(--bg);
+  border:1px solid var(--border);
+  color:var(--text);
+  font-family:'IBM Plex Mono',monospace;
+  font-size:13px;
+  padding:9px 12px;
+  border-radius:2px;
+  outline:none;
+  transition:border-color .2s;
+  width:100%;
+  -webkit-appearance:none;
+}
+input:focus, select:focus { border-color:var(--accent); box-shadow:0 0 0 1px rgba(0,212,255,.12); }
+input::placeholder { color:var(--muted); }
+select option { background:var(--surface); }
+.hint { font-size:9px; color:var(--muted); margin-top:2px; line-height:1.5; }
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+@media(max-width:580px) { .g2,.g3 { grid-template-columns:1fr; } }
+
+/* BUTTONS */
+.btn {
+  padding:12px 22px;
+  border:1px solid var(--accent);
+  background:transparent;
+  color:var(--accent);
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:15px;
+  font-weight:700;
+  letter-spacing:3px;
+  text-transform:uppercase;
+  cursor:pointer;
+  border-radius:2px;
+  position:relative;
+  overflow:hidden;
+  transition:color .25s;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+}
+.btn::before {
+  content:'';
+  position:absolute;
+  inset:0;
+  background:var(--accent);
+  transform:translateX(-101%);
+  transition:transform .25s ease;
+}
+.btn:hover::before { transform:translateX(0); }
+.btn:hover { color:var(--bg); }
+.btn span { position:relative; z-index:1; }
+.btn.orange-btn { border-color:var(--orange); color:var(--orange); }
+.btn.orange-btn::before { background:var(--orange); }
+.btn.orange-btn:hover { color:var(--bg); }
+.btn.green-btn { border-color:var(--green); color:var(--green); }
+.btn.green-btn::before { background:var(--green); }
+.btn.green-btn:hover { color:var(--bg); }
+.btn:disabled { opacity:.4; cursor:not-allowed; }
+.btn:disabled::before { display:none; }
+.btn-full { width:100%; justify-content:center; }
+.btn-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+
+/* STATUS */
+.status-bar {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 14px;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:2px;
+  font-size:11px;
+  color:var(--label);
+  margin-bottom:14px;
+}
+.status-dot {
+  width:7px; height:7px; border-radius:50%; background:var(--muted); flex-shrink:0;
+  transition:background .3s;
+}
+.status-dot.ok { background:var(--green); box-shadow:0 0 6px var(--green); }
+.status-dot.loading { background:var(--yellow); animation:pulse 1s infinite; }
+.status-dot.error { background:var(--red); }
+
+@keyframes pulse {
+  0%,100% { opacity:1; } 50% { opacity:.3; }
+}
+
+/* SEGMENT LIST */
+.seg-list { max-height:320px; overflow-y:auto; }
+.seg-item {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:11px 14px;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-radius:2px;
+  margin-bottom:6px;
+  cursor:pointer;
+  transition:border-color .2s, background .2s;
+}
+.seg-item:hover { border-color:var(--accent); background:var(--surface3); }
+.seg-item.selected { border-color:var(--accent); background:var(--surface3); }
+.seg-item.selected::before { content:'▶ '; color:var(--accent); }
+.seg-name { font-size:12px; font-weight:500; }
+.seg-meta { font-size:9px; color:var(--muted); margin-top:3px; }
+.seg-badge { font-size:10px; color:var(--accent); background:rgba(0,212,255,.1); padding:3px 8px; border-radius:1px; flex-shrink:0; }
+.seg-search {
+  background:var(--bg);
+  border:1px solid var(--border);
+  color:var(--text);
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12px;
+  padding:9px 12px;
+  border-radius:2px;
+  outline:none;
+  width:100%;
+  margin-bottom:10px;
+}
+.seg-search:focus { border-color:var(--accent); }
+
+/* EFFORTS TABLE */
+.efforts-grid {
+  display:grid;
+  grid-template-columns: 120px 80px 70px 70px 70px 80px 70px 70px;
+  font-size:10px;
+  gap:0;
+  overflow-x:auto;
+}
+.ef-head {
+  background:var(--surface3);
+  color:var(--muted);
+  font-size:8px;
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+  padding:8px 10px;
+  border-bottom:1px solid var(--border);
+}
+.ef-cell {
+  padding:8px 10px;
+  border-bottom:1px solid rgba(30,39,56,.6);
+  font-size:10px;
+  white-space:nowrap;
+}
+.ef-cell.ok { color:var(--green); }
+.ef-cell.warn { color:var(--yellow); }
+.ef-cell.err { color:var(--red); }
+.ef-row-hl { background:rgba(0,212,255,.04); }
+
+/* PROGRESS */
+.progress-wrap { margin:14px 0; }
+.progress-label { font-size:9px; color:var(--muted); letter-spacing:1px; margin-bottom:6px; }
+.progress-bar-bg {
+  height:3px;
+  background:var(--border);
+  border-radius:2px;
+  overflow:hidden;
+}
+.progress-bar-fill {
+  height:100%;
+  background:var(--accent);
+  border-radius:2px;
+  transition:width .3s ease;
+  box-shadow:0 0 8px var(--accent);
+}
+
+/* RESULTS */
+.result-hero {
+  text-align:center;
+  padding:36px 0 28px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:24px;
+}
+.result-hero .rh-label { font-size:9px; letter-spacing:4px; text-transform:uppercase; color:var(--muted); margin-bottom:10px; }
+.result-hero .rh-val {
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:clamp(60px,14vw,110px);
+  font-weight:900;
+  line-height:1;
+  color:var(--accent);
+  text-shadow:0 0 50px rgba(0,212,255,.3);
+}
+.result-hero .rh-unit { font-size:15px; color:var(--muted); margin-top:4px; letter-spacing:2px; }
+.result-hero .rh-sd {
+  font-size:18px;
+  color:var(--label);
+  margin-top:8px;
+  font-family:'Barlow Condensed',sans-serif;
+  font-weight:600;
+}
+.quality-badge {
+  display:inline-block;
+  margin-top:14px;
+  padding:5px 16px;
+  border-radius:2px;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:3px;
+  text-transform:uppercase;
+}
+
+.stats-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:10px;
+  margin-bottom:20px;
+}
+.stat-box {
+  background:var(--surface2);
+  border:1px solid var(--border);
+  padding:14px;
+  border-radius:2px;
+}
+.stat-box .sl { font-size:8px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-bottom:5px; }
+.stat-box .sv { font-size:20px; font-weight:500; }
+.stat-box .su { font-size:9px; color:var(--muted); }
+
+/* SCATTER */
+.chart-area { position:relative; background:var(--surface2); border:1px solid var(--border); border-radius:2px; padding:16px; margin-bottom:14px; overflow:hidden; }
+.chart-area canvas { display:block; width:100%; }
+
+/* HISTOGRAM */
+.hist-bars { display:flex; align-items:flex-end; gap:3px; height:80px; margin:8px 0 4px; }
+.hist-bar { flex:1; background:var(--accent); opacity:.7; border-radius:1px 1px 0 0; min-width:6px; transition:opacity .2s; }
+.hist-bar:hover { opacity:1; }
+.hist-labels { display:flex; justify-content:space-between; font-size:8px; color:var(--muted); }
+
+/* EFFORT RESULTS TABLE */
+.eff-results { max-height:380px; overflow-y:auto; margin-top:14px; }
+.eff-results table { width:100%; border-collapse:collapse; font-size:10px; }
+.eff-results th {
+  background:var(--surface3);
+  color:var(--muted);
+  font-size:8px;
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+  padding:8px 10px;
+  text-align:left;
+  position:sticky;
+  top:0;
+  white-space:nowrap;
+}
+.eff-results td { padding:7px 10px; border-bottom:1px solid rgba(30,39,56,.5); white-space:nowrap; }
+.eff-results tr:hover td { background:var(--surface3); }
+.cda-val { font-weight:600; }
+
+/* ALERT */
+.alert {
+  padding:12px 16px;
+  border-radius:2px;
+  font-size:11px;
+  margin:10px 0;
+  border:1px solid;
+  display:none;
+  line-height:1.6;
+}
+.alert.err { background:rgba(255,59,59,.08); border-color:rgba(255,59,59,.3); color:#ff6060; }
+.alert.info { background:rgba(0,212,255,.06); border-color:rgba(0,212,255,.2); color:var(--accent); }
+.alert.warn { background:rgba(255,214,10,.06); border-color:rgba(255,214,10,.25); color:var(--yellow); }
+.alert.show { display:block; }
+
+/* SETUP STEPS */
+.steps { counter-reset:step; }
+.step {
+  display:flex;
+  gap:16px;
+  align-items:flex-start;
+  padding:14px 0;
+  border-bottom:1px solid var(--border);
+}
+.step:last-child { border-bottom:none; }
+.step-num {
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:28px;
+  font-weight:900;
+  color:var(--border);
+  line-height:1;
+  flex-shrink:0;
+  width:32px;
+  text-align:right;
+}
+.step-content .step-title { font-size:11px; font-weight:600; color:var(--text); margin-bottom:4px; }
+.step-content .step-desc { font-size:10px; color:var(--muted); line-height:1.6; }
+.step-content a { color:var(--accent); text-decoration:none; }
+.step-content a:hover { text-decoration:underline; }
+
+/* SECTIONS VISIBILITY */
+.section { margin-bottom:0; }
+[data-section] { display:none; }
+[data-section].active { display:block; }
+#s-setup { display:block; }
+
+/* TIRE BADGE */
+.tire-badge {
+  background:linear-gradient(135deg,#0d1a0d,#172017);
+  border:1px solid rgba(57,255,20,.2);
+  border-radius:2px;
+  padding:12px 16px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-top:4px;
+}
+.tire-name { font-family:'Barlow Condensed',sans-serif; font-size:12px; font-weight:600; color:var(--green); letter-spacing:1px; }
+.tire-sub { font-size:9px; color:#3a6a3a; margin-top:2px; letter-spacing:1px; text-transform:uppercase; }
+.tire-crr { font-size:13px; color:var(--green); font-weight:600; }
+
+/* NOTE */
+.note { font-size:9px; color:var(--muted); letter-spacing:.5px; line-height:1.7; padding-top:14px; border-top:1px solid var(--border); margin-top:14px; }
+.note strong { color:var(--orange); }
+
+/* WIND DIRECTION CARD */
+.wind-card { display:none; }
+.wind-card.visible { display:block; }
+
+.compass-wrap {
+  display:flex;
+  gap:28px;
+  align-items:flex-start;
+  flex-wrap:wrap;
+}
+.compass-outer {
+  position:relative;
+  width:180px;
+  height:180px;
+  flex-shrink:0;
+}
+.compass-svg { width:180px; height:180px; cursor:pointer; user-select:none; }
+.compass-label {
+  position:absolute;
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:11px;
+  font-weight:700;
+  color:var(--muted);
+  pointer-events:none;
+}
+.compass-label.n { top:2px; left:50%; transform:translateX(-50%); }
+.compass-label.s { bottom:2px; left:50%; transform:translateX(-50%); }
+.compass-label.e { right:2px; top:50%; transform:translateY(-50%); }
+.compass-label.w { left:2px; top:50%; transform:translateY(-50%); }
+
+.wind-info-col { flex:1; min-width:200px; display:flex; flex-direction:column; gap:12px; }
+
+.wind-stat {
+  background:var(--surface2);
+  border:1px solid var(--border);
+  padding:12px 14px;
+  border-radius:2px;
+}
+.wind-stat .ws-label { font-size:8px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+.wind-stat .ws-val { font-size:22px; font-weight:500; font-family:'Barlow Condensed',sans-serif; }
+.wind-stat .ws-sub { font-size:9px; color:var(--muted); margin-top:2px; }
+
+.angle-display {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.angle-chip {
+  padding:3px 10px;
+  border-radius:2px;
+  font-size:10px;
+  font-weight:600;
+  letter-spacing:1px;
+  font-family:'Barlow Condensed',sans-serif;
+}
+.angle-chip.head { background:rgba(255,59,59,.15); color:#ff6060; border:1px solid rgba(255,59,59,.3); }
+.angle-chip.tail { background:rgba(57,255,20,.15); color:#39ff14; border:1px solid rgba(57,255,20,.3); }
+.angle-chip.cross { background:rgba(0,212,255,.12); color:#00d4ff; border:1px solid rgba(0,212,255,.25); }
+.angle-chip.neutral { background:rgba(90,100,120,.2); color:var(--label); border:1px solid var(--border); }
+
+.dir-input-row {
+  display:flex;
+  gap:10px;
+  align-items:center;
+  margin-top:6px;
+}
+.dir-input-row input[type=number] {
+  width:90px;
+  padding:8px 10px;
+  font-size:14px;
+}
+.dir-input-row .deg-label { font-size:11px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="tag">// velodrom analytics</div>
+  <h1><em>CdA</em> <span class="strava-color">STRAVA</span><br>ANALYZER</h1>
+  <p class="sub">SEGMENT · HISTORISCHE WEER · STATISTISCHE ANALYSE · GP5000 32MM TL @ 4 BAR</p>
+</header>
+
+<!-- STATUS BAR -->
+<div class="status-bar" id="statusBar">
+  <div class="status-dot" id="statusDot"></div>
+  <span id="statusText">Verbinding vereist — voer je Strava API credentials in</span>
+</div>
+
+<!-- ═══════════════ SETUP SECTION ═══════════════ -->
+<div id="s-setup" data-section class="active">
+
+  <div class="card orange">
+    <div class="card-title"><span class="card-dot"></span>Strava API Verbinding</div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <div class="step-title">Maak een Strava API applicatie</div>
+          <div class="step-desc">
+            Ga naar <a href="https://www.strava.com/settings/api" target="_blank">strava.com/settings/api</a> en maak een app aan.
+            Stel de <strong>Authorization Callback Domain</strong> in op <code id="callbackDomain">—</code>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <div class="step-title">Vul je credentials in</div>
+          <div class="step-desc">Client Secret blijft lokaal in je browser — wordt nooit opgeslagen of verstuurd naar derden.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="g2" style="margin-top:14px">
+      <div class="field">
+        <label>Client ID</label>
+        <input type="text" id="clientId" placeholder="bv. 12345" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Client Secret</label>
+        <input type="password" id="clientSecret" placeholder="••••••••••••••••••" autocomplete="off">
+      </div>
+    </div>
+    <div class="alert info show" style="margin-top:12px">
+      ℹ De token-uitwisseling gebeurt rechtstreeks vanuit je browser naar Strava. Je credentials worden nooit opgeslagen.
+    </div>
+    <div class="btn-row">
+      <button class="btn orange-btn btn-full" onclick="stravaConnect()"><span>VERBINDEN MET STRAVA →</span></button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════ SEGMENT SECTION ═══════════════ -->
+<div id="s-segment" data-section>
+
+  <div class="card blue">
+    <div class="card-title"><span class="card-dot"></span>Kies een Segment</div>
+
+    <div class="g2" style="margin-bottom:14px">
+      <div class="field">
+        <label>Zoek op naam</label>
+        <input class="seg-search" type="text" id="segSearch" placeholder="bv. Alpe d'Huez..." oninput="filterSegments()">
+      </div>
+      <div class="field">
+        <label>Eigen segment ID (optioneel)</label>
+        <input type="text" id="customSegId" placeholder="bv. 229781">
+        <div class="hint">Vul direct een Strava segment-ID in, of zoek via de lijst hieronder.</div>
+      </div>
+    </div>
+
+    <div id="segListWrap">
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px;">Starred segmenten worden geladen...</div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn green-btn" onclick="loadSegmentById()" id="btnLoadById"><span>LAAD SEGMENT OP ID →</span></button>
+      <button class="btn btn-full" onclick="analyzeSegment()" id="btnAnalyze" disabled><span>ANALYSEER GESELECTEERD SEGMENT →</span></button>
+    </div>
+  </div>
+
+  <!-- Wind direction card — shown after segment selected -->
+  <div class="card blue wind-card" id="windCard">
+    <div class="card-title"><span class="card-dot"></span>Segmentrichting &amp; Windcorrectie</div>
+
+    <div style="font-size:10px;color:var(--label);margin-bottom:16px;line-height:1.7">
+      Rijrichting is automatisch berekend uit de start- en eindcoördinaten van het segment.
+      Pas aan indien het segment niet recht is. De windcomponent wordt per effort berekend als <strong style="color:var(--accent)">cos(windhoek − rijrichting)</strong>.
+    </div>
+
+    <div class="compass-wrap">
+      <!-- Compass SVG -->
+      <div class="compass-outer">
+        <span class="compass-label n">N</span>
+        <span class="compass-label s">Z</span>
+        <span class="compass-label e">O</span>
+        <span class="compass-label w">W</span>
+        <svg class="compass-svg" id="compassSvg" viewBox="0 0 180 180"
+             onmousedown="compassDragStart(event)" ontouchstart="compassDragStart(event)">
+          <!-- Background ring -->
+          <circle cx="90" cy="90" r="82" fill="none" stroke="#1e2738" stroke-width="1.5"/>
+          <circle cx="90" cy="90" r="72" fill="#0f1318" stroke="#1e2738" stroke-width="1"/>
+          <!-- Tick marks -->
+          <g id="compassTicks"></g>
+          <!-- Segment direction arrow (riding direction) -->
+          <g id="segArrow" transform="rotate(0,90,90)">
+            <line x1="90" y1="90" x2="90" y2="20" stroke="#00d4ff" stroke-width="2.5" stroke-linecap="round"/>
+            <polygon points="90,12 85,24 95,24" fill="#00d4ff"/>
+            <line x1="90" y1="90" x2="90" y2="160" stroke="#00d4ff" stroke-width="1.5" stroke-dasharray="4,3" stroke-linecap="round" opacity="0.4"/>
+            <circle cx="90" cy="90" r="4" fill="#00d4ff"/>
+          </g>
+          <!-- Wind arrow (draggable) -->
+          <g id="windArrow" transform="rotate(0,90,90)">
+            <line x1="90" y1="90" x2="90" y2="22" stroke="#ff6b35" stroke-width="2" stroke-linecap="round"/>
+            <polygon points="90,14 85.5,26 94.5,26" fill="#ff6b35" opacity="0.9"/>
+            <circle cx="90" cy="90" r="3" fill="#ff6b35"/>
+          </g>
+          <!-- Center dot -->
+          <circle cx="90" cy="90" r="5" fill="#1e2738" stroke="#00d4ff" stroke-width="1.5"/>
+        </svg>
+      </div>
+
+      <!-- Info column -->
+      <div class="wind-info-col">
+        <!-- Segment heading -->
+        <div class="wind-stat">
+          <div class="ws-label">Segmentrichting (rijrichting)</div>
+          <div class="ws-val" id="segHeadingVal">—°</div>
+          <div class="ws-sub" id="segHeadingCardinal">—</div>
+          <div class="dir-input-row" style="margin-top:8px">
+            <input type="number" id="segHeadingInput" min="0" max="359" step="1" placeholder="0–359"
+                   oninput="onSegHeadingInput()" style="width:90px">
+            <span class="deg-label">° handmatig aanpassen</span>
+          </div>
+        </div>
+
+        <!-- Wind angle chip -->
+        <div class="wind-stat">
+          <div class="ws-label">Gemiddeld windeffect (alle efforts)</div>
+          <div class="ws-val" id="avgWindEffect">—</div>
+          <div class="ws-sub" id="avgWindChip"></div>
+          <div style="font-size:9px;color:var(--muted);margin-top:6px;line-height:1.6">
+            Effectieve windsnelheid = windspeed × cos(Δhoek).
+            Headwind = positief (remt af), tailwind = negatief (duwt mee).
+          </div>
+        </div>
+
+        <!-- Legend -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;font-size:9px;color:var(--muted);align-items:center">
+          <span style="color:#00d4ff">━</span> Rijrichting &nbsp;
+          <span style="color:#ff6b35">━</span> Windrichting (sleepbaar)
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>Windsleepbaar:</strong> Klik en sleep de oranje pijl op het kompas, of typ een waarde.
+      De rijrichting (blauw) wordt automatisch berekend maar kan ook handmatig worden aangepast.
+      Wind komt <em>uit</em> de aangegeven richting (meteorologische conventie).
+    </div>
+  </div>
+
+  <!-- Tire spec -->
+  <div class="card green" style="padding:18px 24px">
+    <div class="card-title"><span class="card-dot"></span>Bandenspecificatie</div>
+    <div class="tire-badge">
+      <div>
+        <div class="tire-name">CONTINENTAL GP 5000 TUBELESS 32MM</div>
+        <div class="tire-sub">4 bar · Crr = 0.0035 · rijder + fiets = 70 kg</div>
+      </div>
+      <div class="tire-crr">Crr 0.0035</div>
+    </div>
+    <div class="note">
+      <strong>Crr 0.0035</strong> op basis van bandentests bij 4 bar (58 psi) voor de GP5000 32mm tubeless op asfalt. Lager bandendruk → meer vervormingshysteresis → hogere Crr dan bij 5+ bar. Totaalgewicht rijder + fiets vast op <strong>70 kg</strong>.
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════ ANALYSIS SECTION ═══════════════ -->
+<div id="s-analysis" data-section>
+
+  <div class="card yellow" id="analysisCard">
+    <div class="card-title"><span class="card-dot"></span>Analyse voortgang</div>
+    <div id="analysisSeg" style="font-size:12px;color:var(--text);margin-bottom:14px;"></div>
+    <div class="progress-wrap">
+      <div class="progress-label" id="progressLabel">Bezig...</div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill" style="width:0%"></div></div>
+    </div>
+    <div id="analysisLog" style="font-size:9px;color:var(--muted);line-height:2;max-height:120px;overflow-y:auto;"></div>
+  </div>
+
+  <div id="s-results-wrap" style="display:none">
+
+    <!-- HERO RESULT -->
+    <div class="card blue">
+      <div class="card-title"><span class="card-dot"></span>CdA Resultaat</div>
+      <div class="result-hero">
+        <div class="rh-label">// gemiddelde CdA over alle geldige efforts</div>
+        <div class="rh-val" id="resCdA">—</div>
+        <div class="rh-unit">m²</div>
+        <div class="rh-sd" id="resSd">± —</div>
+        <div class="quality-badge" id="resQuality">—</div>
+      </div>
+
+      <div class="stats-grid" id="statsGrid"></div>
+
+      <!-- Histogram -->
+      <div class="chart-area">
+        <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">// distributie CdA waarden</div>
+        <div class="hist-bars" id="histBars"></div>
+        <div class="hist-labels" id="histLabels"></div>
+      </div>
+
+      <div class="note">
+        <strong>Methode:</strong> Energie-balans per effort: CdA = (P·t − m·g·Crr·d − m·g·Δh) / (½·ρ·v_air²·d).
+        Luchtdichtheid ρ via Open-Meteo Archive API per effort. Effectieve luchtsnelheid: v_air = v_rijder + v_wind·cos(windhoek − segmentrichting).
+        Wind <em>uit</em> de rijrichting = headwind (positief), wind <em>mee</em> = tailwind (negatief).
+        Efforts zonder vermogensdata worden overgeslagen.
+      </div>
+    </div>
+
+    <!-- PER-EFFORT TABLE -->
+    <div class="card" style="border-top-color:var(--muted)">
+      <div class="card-title"><span class="card-dot" style="background:var(--muted)"></span>Details per effort</div>
+      <div class="eff-results">
+        <table id="effortsTable">
+          <thead>
+            <tr>
+              <th>Datum</th>
+              <th>Tijd</th>
+              <th>V km/h</th>
+              <th>Watt</th>
+              <th>Temp °C</th>
+              <th>Wind km/h</th>
+              <th>Windeff. m/s</th>
+              <th>ρ kg/m³</th>
+              <th>CdA m²</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="effortsBody"></tbody>
+        </table>
+      </div>
+      <div class="btn-row" style="margin-top:16px">
+        <button class="btn" onclick="goToSegment()"><span>← ANDER SEGMENT</span></button>
+        <button class="btn green-btn" onclick="exportCSV()"><span>EXPORTEER CSV</span></button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</div><!-- /wrap -->
+
+<script>
+// ─────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────
+const CRR = 0.0035; // GP5000 32mm tubeless @ 4 bar
+const MASS = 70;    // kg rijder + fiets
+const G = 9.81;
+const STRAVA_AUTH_URL = 'https://www.strava.com/oauth/authorize';
+const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token';
+const STRAVA_API = 'https://www.strava.com/api/v3';
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let token = null;
+let athlete = null;
+let segments = [];
+let selectedSegment = null;
+let allEfforts = [];
+let resultsData = [];
+let clientId = '';
+let clientSecret = '';
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+window.onload = async function() {
+  document.getElementById('callbackDomain').textContent = window.location.hostname || window.location.host;
+
+  // Restore credentials from sessionStorage
+  clientId = sessionStorage.getItem('strava_cid') || '';
+  clientSecret = sessionStorage.getItem('strava_cs') || '';
+  if (clientId) document.getElementById('clientId').value = clientId;
+  if (clientSecret) document.getElementById('clientSecret').value = clientSecret;
+
+  // Check OAuth callback
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const error = params.get('error');
+
+  if (error) {
+    setStatus('error', 'Strava autorisatie geweigerd: ' + error);
+    return;
+  }
+
+  if (code) {
+    setStatus('loading', 'Token uitwisselen met Strava...');
+    // Clean URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+    await exchangeToken(code);
+    return;
+  }
+
+  // Check stored token
+  const storedToken = sessionStorage.getItem('strava_token');
+  if (storedToken) {
+    token = JSON.parse(storedToken);
+    if (token.expires_at * 1000 > Date.now()) {
+      await onAuthenticated();
+      return;
+    }
+  }
+};
+
+// ─────────────────────────────────────────────
+// AUTH
+// ─────────────────────────────────────────────
+function stravaConnect() {
+  clientId = document.getElementById('clientId').value.trim();
+  clientSecret = document.getElementById('clientSecret').value.trim();
+  if (!clientId || !clientSecret) {
+    showAlert('err', 'Vul beide Client ID en Client Secret in.', 's-setup');
+    return;
+  }
+  sessionStorage.setItem('strava_cid', clientId);
+  sessionStorage.setItem('strava_cs', clientSecret);
+
+  const redirectUri = window.location.origin + window.location.pathname;
+  const scope = 'read,activity:read_all';
+  const url = `${STRAVA_AUTH_URL}?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&approval_prompt=auto&scope=${scope}`;
+  window.location.href = url;
+}
+
+async function exchangeToken(code) {
+  clientId = sessionStorage.getItem('strava_cid') || '';
+  clientSecret = sessionStorage.getItem('strava_cs') || '';
+  if (!clientId || !clientSecret) {
+    setStatus('error', 'Credentials niet gevonden — vul ze opnieuw in.');
+    showSection('s-setup');
+    return;
+  }
+  try {
+    const res = await fetch(STRAVA_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code: code,
+        grant_type: 'authorization_code'
+      })
+    });
+    const data = await res.json();
+    if (data.errors || !data.access_token) {
+      throw new Error(JSON.stringify(data.errors || data.message || 'Onbekende fout'));
+    }
+    token = data;
+    sessionStorage.setItem('strava_token', JSON.stringify(token));
+    await onAuthenticated();
+  } catch(e) {
+    setStatus('error', 'Token uitwisseling mislukt: ' + e.message);
+  }
+}
+
+async function onAuthenticated() {
+  athlete = token.athlete;
+  setStatus('ok', `Verbonden als ${athlete?.firstname} ${athlete?.lastname} (@${athlete?.username || athlete?.id})`);
+  showSection('s-segment');
+  await loadStarredSegments();
+}
+
+// ─────────────────────────────────────────────
+// STRAVA API HELPERS
+// ─────────────────────────────────────────────
+async function stravaGet(path, params = {}) {
+  const url = new URL(STRAVA_API + path);
+  Object.entries(params).forEach(([k,v]) => url.searchParams.set(k, v));
+  const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token.access_token } });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// ─────────────────────────────────────────────
+// LOAD STARRED SEGMENTS
+// ─────────────────────────────────────────────
+async function loadStarredSegments() {
+  const wrap = document.getElementById('segListWrap');
+  wrap.innerHTML = '<div style="font-size:10px;color:var(--muted)">Starred segmenten laden...</div>';
+  try {
+    let page = 1, all = [];
+    while (true) {
+      const data = await stravaGet('/segments/starred', { page, per_page: 50 });
+      if (!data.length) break;
+      all = all.concat(data);
+      if (data.length < 50) break;
+      page++;
+      if (page > 10) break; // safety
+    }
+    segments = all;
+    renderSegmentList(segments);
+  } catch(e) {
+    wrap.innerHTML = `<div style="font-size:10px;color:var(--red)">Fout bij laden segmenten: ${e.message}</div>`;
+  }
+}
+
+function renderSegmentList(list) {
+  const wrap = document.getElementById('segListWrap');
+  if (!list.length) {
+    wrap.innerHTML = '<div style="font-size:10px;color:var(--muted)">Geen starred segmenten gevonden. Gebruik het ID-veld.</div>';
+    return;
+  }
+  const html = `<div class="seg-list" id="segList">` +
+    list.map(s => `
+      <div class="seg-item" id="si-${s.id}" onclick="selectSegment(${s.id}, '${escHtml(s.name)}', ${s.distance}, ${s.total_elevation_gain}, ${JSON.stringify(s.start_latlng)}, ${JSON.stringify(s.end_latlng)})">
+        <div>
+          <div class="seg-name">${escHtml(s.name)}</div>
+          <div class="seg-meta">${(s.distance/1000).toFixed(2)} km · ${s.total_elevation_gain}m hoogteverschil · ${s.effort_count || '?'} efforts</div>
+        </div>
+        <div class="seg-badge">${(s.distance/1000).toFixed(1)}km</div>
+      </div>`
+    ).join('') + `</div>`;
+  wrap.innerHTML = html;
+}
+
+function filterSegments() {
+  const q = document.getElementById('segSearch').value.toLowerCase();
+  const filtered = segments.filter(s => s.name.toLowerCase().includes(q));
+  renderSegmentList(filtered);
+}
+
+async function loadSegmentById() {
+  const id = document.getElementById('customSegId').value.trim();
+  if (!id) return;
+  try {
+    setStatus('loading', `Segment ${id} laden...`);
+    const s = await stravaGet(`/segments/${id}`);
+    // Add to list if not there
+    if (!segments.find(x => x.id == s.id)) segments.unshift(s);
+    renderSegmentList(segments);
+    selectSegment(s.id, s.name, s.distance, s.total_elevation_gain, s.start_latlng, s.end_latlng);
+    setStatus('ok', `Segment geladen: ${s.name}`);
+  } catch(e) {
+    setStatus('error', 'Segment laden mislukt: ' + e.message);
+  }
+}
+
+function selectSegment(id, name, distance, elevation, startLl, endLl) {
+  document.querySelectorAll('.seg-item').forEach(el => el.classList.remove('selected'));
+  const el = document.getElementById('si-' + id);
+  if (el) el.classList.add('selected');
+
+  // Compute segment bearing from start → end latlng
+  let bearing = 0;
+  if (startLl && endLl && startLl.length === 2 && endLl.length === 2) {
+    bearing = calcBearing(startLl[0], startLl[1], endLl[0], endLl[1]);
+  }
+
+  selectedSegment = { id, name, distance, elevation, startLl, endLl, bearing };
+  segmentHeading = bearing;
+  windDirection = 0; // reset wind direction
+
+  document.getElementById('btnAnalyze').disabled = false;
+  setStatus('ok', `Geselecteerd: "${name}" (${(distance/1000).toFixed(2)} km, ${elevation}m hoogte, richting ${bearing.toFixed(0)}°)`);
+
+  // Show compass card and initialise it
+  document.getElementById('windCard').classList.add('visible');
+  initCompass(bearing);
+  document.getElementById('windCard').scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+// ─────────────────────────────────────────────
+// COMPASS / WIND DIRECTION
+// ─────────────────────────────────────────────
+let segmentHeading = 0;   // degrees 0–360, direction of travel
+let windDirection = 0;    // degrees 0–360, meteorological (wind comes FROM this direction)
+let compassDragging = false;
+
+function calcBearing(lat1, lon1, lat2, lon2) {
+  const toRad = d => d * Math.PI / 180;
+  const dLon = toRad(lon2 - lon1);
+  const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+            Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+  return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+}
+
+function degreesToCardinal(deg) {
+  const dirs = ['N','NNO','NO','ONO','O','OZO','ZO','ZZO','Z','ZZW','ZW','WZW','W','WNW','NW','NNW'];
+  return dirs[Math.round(deg / 22.5) % 16];
+}
+
+function initCompass(segBearing) {
+  // Draw tick marks
+  const ticks = document.getElementById('compassTicks');
+  let t = '';
+  for (let i = 0; i < 36; i++) {
+    const angle = i * 10;
+    const rad = angle * Math.PI / 180;
+    const isMajor = i % 9 === 0;
+    const r1 = isMajor ? 66 : 70;
+    const r2 = 76;
+    const cx = 90, cy = 90;
+    const x1 = cx + r1 * Math.sin(rad), y1 = cy - r1 * Math.cos(rad);
+    const x2 = cx + r2 * Math.sin(rad), y2 = cy - r2 * Math.cos(rad);
+    t += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
+           stroke="${isMajor ? '#2a3550' : '#1e2738'}" stroke-width="${isMajor ? 1.5 : 0.8}"/>`;
+  }
+  ticks.innerHTML = t;
+
+  updateCompassDisplay(segBearing, windDirection);
+}
+
+function updateCompassDisplay(segBearing, windDir) {
+  // Rotate segment arrow
+  document.getElementById('segArrow').setAttribute('transform', `rotate(${segBearing},90,90)`);
+  // Rotate wind arrow
+  document.getElementById('windArrow').setAttribute('transform', `rotate(${windDir},90,90)`);
+
+  // Update text displays
+  document.getElementById('segHeadingVal').textContent = Math.round(segBearing) + '°';
+  document.getElementById('segHeadingCardinal').textContent = degreesToCardinal(segBearing);
+  document.getElementById('segHeadingInput').value = Math.round(segBearing);
+
+  updateWindEffectDisplay();
+}
+
+function updateWindEffectDisplay() {
+  // Show the type of wind relative to riding direction
+  const diff = ((windDirection - segmentHeading) + 360) % 360;
+  const eff = Math.cos(diff * Math.PI / 180); // +1 = full headwind, -1 = full tailwind
+
+  const el = document.getElementById('avgWindEffect');
+  const chip = document.getElementById('avgWindChip');
+  el.textContent = eff.toFixed(2);
+
+  let chipClass, chipText;
+  if (diff < 45 || diff > 315) { chipClass = 'head'; chipText = 'HEADWIND'; }
+  else if (diff > 135 && diff < 225) { chipClass = 'tail'; chipText = 'TAILWIND'; }
+  else { chipClass = 'cross'; chipText = 'ZIJWIND'; }
+
+  chip.innerHTML = `<span class="angle-chip ${chipClass}">${chipText}</span>
+    <span style="font-size:9px;color:var(--muted);margin-left:6px">Δ${Math.round(Math.min(diff,360-diff))}° · cos = ${eff.toFixed(3)}</span>`;
+}
+
+// Compass drag
+function compassDragStart(e) {
+  compassDragging = true;
+  compassMove(e);
+  document.addEventListener('mousemove', compassMove);
+  document.addEventListener('mouseup', compassDragEnd);
+  document.addEventListener('touchmove', compassMove, { passive:false });
+  document.addEventListener('touchend', compassDragEnd);
+}
+function compassDragEnd() {
+  compassDragging = false;
+  document.removeEventListener('mousemove', compassMove);
+  document.removeEventListener('mouseup', compassDragEnd);
+  document.removeEventListener('touchmove', compassMove);
+  document.removeEventListener('touchend', compassDragEnd);
+}
+function compassMove(e) {
+  if (!compassDragging) return;
+  e.preventDefault();
+  const svg = document.getElementById('compassSvg');
+  const rect = svg.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  const dx = clientX - cx, dy = clientY - cy;
+  let angle = Math.atan2(dx, -dy) * 180 / Math.PI;
+  if (angle < 0) angle += 360;
+  windDirection = angle;
+  updateCompassDisplay(segmentHeading, windDirection);
+}
+
+function onSegHeadingInput() {
+  const val = parseFloat(document.getElementById('segHeadingInput').value);
+  if (!isNaN(val)) {
+    segmentHeading = ((val % 360) + 360) % 360;
+    if (selectedSegment) selectedSegment.bearing = segmentHeading;
+    updateCompassDisplay(segmentHeading, windDirection);
+  }
+}
+
+// Wind effective component for a single effort's wind direction
+function windEffectComponent(weatherWindDir) {
+  // meteorological: wind comes FROM weatherWindDir
+  // riding heading: segmentHeading
+  // headwind component: cos(weatherWindDir - segmentHeading)
+  const diff = (weatherWindDir - segmentHeading + 360) % 360;
+  return Math.cos(diff * Math.PI / 180); // +1 full head, -1 full tail
+}
+
+// ─────────────────────────────────────────────
+// ANALYZE SEGMENT
+// ─────────────────────────────────────────────
+async function analyzeSegment() {
+  if (!selectedSegment) return;
+  showSection('s-analysis');
+  document.getElementById('s-results-wrap').style.display = 'none';
+
+  const seg = selectedSegment;
+  document.getElementById('analysisSeg').textContent = `Segment: "${seg.name}" — ${(seg.distance/1000).toFixed(2)} km, Δh ${seg.elevation}m`;
+  log('');
+  setProgress(0, 'Efforts laden van Strava...');
+
+  try {
+    // Load all efforts for this segment
+    log('→ Alle efforts ophalen voor segment ' + seg.id);
+    const efforts = await loadAllEfforts(seg.id);
+    log(`→ ${efforts.length} efforts gevonden`);
+
+    if (!efforts.length) {
+      setProgress(100, 'Geen efforts gevonden.');
+      log('✗ Geen efforts op dit segment.');
+      return;
+    }
+
+    // Filter efforts with power data
+    const withPower = efforts.filter(e => e.average_watts && e.average_watts > 0);
+    log(`→ ${withPower.length} efforts met vermogensdata`);
+
+    if (!withPower.length) {
+      setProgress(100, 'Geen efforts met vermogensdata gevonden.');
+      log('✗ Dit segment heeft geen efforts met powermeter data. Gebruik een powermeter voor CdA-berekening.');
+      return;
+    }
+
+    allEfforts = withPower;
+
+    // Get weather for each effort
+    const lat = (seg.startLl && seg.startLl[0]) ? seg.startLl[0] : 52.0;
+    const lon = (seg.startLl && seg.startLl[1]) ? seg.startLl[1] : 5.0;
+
+    log(`→ Locatie segment: ${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+    log(`→ Segmentrichting: ${segmentHeading.toFixed(0)}° (${degreesToCardinal(segmentHeading)})`);
+    log(`→ Weerdata ophalen voor ${withPower.length} efforts via Open-Meteo...`);
+
+    resultsData = [];
+    for (let i = 0; i < withPower.length; i++) {
+      const ef = withPower[i];
+      setProgress(10 + (i / withPower.length) * 80, `Weerdata effort ${i+1}/${withPower.length}: ${ef.start_date_local?.substring(0,10)}`);
+
+      const weather = await getWeather(lat, lon, ef.start_date_local);
+      const result = calcCdA(ef, seg, weather);
+      resultsData.push({ effort: ef, weather, result });
+
+      // Small delay to avoid hammering the API
+      if (i < withPower.length - 1) await sleep(80);
+    }
+
+    setProgress(100, 'Berekening voltooid!');
+    log(`→ ${resultsData.filter(r=>r.result.valid).length} geldige CdA berekeningen`);
+
+    renderResults();
+  } catch(e) {
+    setProgress(100, 'Fout opgetreden: ' + e.message);
+    log('✗ Fout: ' + e.message);
+    console.error(e);
+  }
+}
+
+async function loadAllEfforts(segId) {
+  let page = 1, all = [];
+  while (true) {
+    const data = await stravaGet(`/segments/${segId}/all_efforts`, { page, per_page: 200 });
+    if (!Array.isArray(data) || !data.length) break;
+    all = all.concat(data);
+    log(`  ↳ Pagina ${page}: ${data.length} efforts`);
+    if (data.length < 200) break;
+    page++;
+    if (page > 20) break;
+    await sleep(200);
+  }
+  return all;
+}
+
+// ─────────────────────────────────────────────
+// WEATHER — Open-Meteo Archive API
+// ─────────────────────────────────────────────
+async function getWeather(lat, lon, dateTimeStr) {
+  // dateTimeStr: "2023-06-15T14:30:00Z" or "2023-06-15T14:30:00"
+  const dt = new Date(dateTimeStr);
+  const date = dt.toISOString().substring(0,10);
+  const hour = dt.getUTCHours();
+
+  try {
+    const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${date}&end_date=${date}&hourly=temperature_2m,surface_pressure,relativehumidity_2m,windspeed_10m,winddirection_10m&timezone=UTC&wind_speed_unit=kmh`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (!data.hourly) throw new Error('Geen weerdata');
+
+    const h = data.hourly;
+    // Use the closest hour
+    const idx = Math.min(hour, h.time.length - 1);
+
+    return {
+      temp: h.temperature_2m[idx],
+      pressure: h.surface_pressure[idx],
+      humidity: h.relativehumidity_2m[idx],
+      windspeed: h.windspeed_10m[idx],
+      winddirection: h.winddirection_10m[idx],
+      hour: idx
+    };
+  } catch(e) {
+    // Fallback ISA standard atmosphere
+    return { temp: 15, pressure: 1013.25, humidity: 60, windspeed: 0, winddirection: 0, fallback: true };
+  }
+}
+
+// ─────────────────────────────────────────────
+// CdA CALCULATION
+// ─────────────────────────────────────────────
+function calcAirDensity(tempC, pressHPa, humPct) {
+  const T = tempC + 273.15;
+  const P = pressHPa * 100;
+  const Psat = 611.2 * Math.exp((17.67 * tempC) / (tempC + 243.5));
+  const Pv = (humPct / 100) * Psat;
+  const Pd = P - Pv;
+  return (Pd / (287.058 * T)) + (Pv / (461.495 * T));
+}
+
+function calcCdA(effort, seg, weather) {
+  const d = seg.distance; // m
+  const t = effort.elapsed_time; // s
+  const dh = seg.elevation; // m, positive = uphill
+  const P = effort.average_watts; // W
+
+  if (!P || P <= 0 || !t || t <= 0 || !d || d <= 0) {
+    return { valid: false, reason: 'Ontbrekende data' };
+  }
+
+  const v = d / t; // rider speed m/s
+  const rho = calcAirDensity(weather.temp, weather.pressure, weather.humidity);
+
+  // Wind correction: effective wind speed along riding direction
+  // windEffectComponent returns cos(angle): +1=headwind, -1=tailwind
+  const windMs = (weather.windspeed || 0) / 3.6;
+  const windComp = windEffectComponent(weather.winddirection || 0);
+  const v_wind_head = windMs * windComp; // positive = headwind
+  const v_air = v + v_wind_head;        // effective airspeed
+
+  if (v_air <= 0) {
+    return { valid: false, reason: 'Effectieve luchtsnelheid ≤ 0 (te sterke staartwind)' };
+  }
+
+  const W_total = P * t;
+  const W_rolling = MASS * G * CRR * d;
+  const W_gravity = MASS * G * dh;
+  const W_aero = W_total - W_rolling - W_gravity;
+
+  if (W_aero <= 0) {
+    return { valid: false, reason: 'Negatieve aerodynamische arbeid (vermogen te laag?)' };
+  }
+
+  // F_aero = CdA * 0.5 * rho * v_air^2  →  work over distance d = F_aero * d
+  // But rider moves at v over d; aero force acts against v_air direction.
+  // Using standard virtual elevation / energy balance method:
+  // W_aero = CdA * 0.5 * rho * v_air^2 * d
+  const CdA = W_aero / (0.5 * rho * v_air * v_air * d);
+
+  if (CdA < 0.05 || CdA > 1.2) {
+    return { valid: false, reason: `Onrealistisch CdA: ${CdA.toFixed(4)}` };
+  }
+
+  return {
+    valid: true,
+    CdA,
+    rho,
+    v_kmh: v * 3.6,
+    v_air_kmh: v_air * 3.6,
+    v_wind_head_kmh: v_wind_head * 3.6,
+    windspeed_kmh: weather.windspeed || 0,
+    windComp,
+    W_aero,
+    W_rolling,
+    W_gravity,
+    W_total
+  };
+}
+
+// ─────────────────────────────────────────────
+// RENDER RESULTS
+// ─────────────────────────────────────────────
+function renderResults() {
+  const valid = resultsData.filter(r => r.result.valid);
+  if (!valid.length) {
+    document.getElementById('s-results-wrap').style.display = 'block';
+    document.getElementById('resCdA').textContent = '—';
+    document.getElementById('resSd').textContent = 'Geen geldige berekeningen';
+    return;
+  }
+
+  const cdas = valid.map(r => r.result.CdA);
+  const mean = cdas.reduce((a,b)=>a+b,0) / cdas.length;
+  const variance = cdas.reduce((s,v) => s + (v-mean)**2, 0) / cdas.length;
+  const sd = Math.sqrt(variance);
+  const min = Math.min(...cdas);
+  const max = Math.max(...cdas);
+  const median = [...cdas].sort((a,b)=>a-b)[Math.floor(cdas.length/2)];
+
+  // Hero
+  document.getElementById('resCdA').textContent = mean.toFixed(4);
+  document.getElementById('resSd').textContent = `± ${sd.toFixed(4)} m² (1σ)`;
+
+  const q = qualityLabel(mean);
+  const qBadge = document.getElementById('resQuality');
+  qBadge.textContent = q.text;
+  qBadge.style.background = q.bg;
+  qBadge.style.color = q.color;
+  document.getElementById('resCdA').style.color = q.color;
+  document.getElementById('resCdA').style.textShadow = `0 0 50px ${q.color}30`;
+
+  // Stats grid
+  const avgSpeed = valid.reduce((s,r)=>s+r.result.v_kmh,0)/valid.length;
+  const avgPower = valid.reduce((s,r)=>s+r.effort.average_watts,0)/valid.length;
+  const avgTemp = valid.reduce((s,r)=>s+r.weather.temp,0)/valid.length;
+  const avgRho = valid.reduce((s,r)=>s+r.result.rho,0)/valid.length;
+  const avgWindEff = valid.reduce((s,r)=>s+r.result.v_wind_head_kmh,0)/valid.length;
+  const avgWindSpd = valid.reduce((s,r)=>s+(r.weather.windspeed||0),0)/valid.length;
+
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat-box"><div class="sl">Efforts</div><div class="sv">${valid.length}</div><div class="su">geldig / ${resultsData.length}</div></div>
+    <div class="stat-box"><div class="sl">Gemiddeld CdA</div><div class="sv">${mean.toFixed(4)}</div><div class="su">m²</div></div>
+    <div class="stat-box"><div class="sl">Std. Deviatie</div><div class="sv">${sd.toFixed(4)}</div><div class="su">m² (1σ)</div></div>
+    <div class="stat-box"><div class="sl">Mediaan</div><div class="sv">${median.toFixed(4)}</div><div class="su">m²</div></div>
+    <div class="stat-box"><div class="sl">Min / Max</div><div class="sv">${min.toFixed(4)}</div><div class="su">/ ${max.toFixed(4)} m²</div></div>
+    <div class="stat-box"><div class="sl">Gem. Snelheid</div><div class="sv">${avgSpeed.toFixed(1)}</div><div class="su">km/h</div></div>
+    <div class="stat-box"><div class="sl">Gem. Vermogen</div><div class="sv">${avgPower.toFixed(0)}</div><div class="su">W</div></div>
+    <div class="stat-box"><div class="sl">Gem. Temp.</div><div class="sv">${avgTemp.toFixed(1)}</div><div class="su">°C</div></div>
+    <div class="stat-box"><div class="sl">Gem. Luchtdicht.</div><div class="sv">${avgRho.toFixed(4)}</div><div class="su">kg/m³</div></div>
+    <div class="stat-box"><div class="sl">Gem. Windsnelh.</div><div class="sv">${avgWindSpd.toFixed(1)}</div><div class="su">km/h absoluut</div></div>
+    <div class="stat-box"><div class="sl">Gem. Windeffect</div><div class="sv" style="color:${avgWindEff>1?'var(--red)':avgWindEff<-1?'var(--green)':'var(--label)'}">${avgWindEff>=0?'+':''}${avgWindEff.toFixed(1)}</div><div class="su">km/h headwind (+) / tailwind (−)</div></div>
+    <div class="stat-box"><div class="sl">Segmentrichting</div><div class="sv">${Math.round(segmentHeading)}°</div><div class="su">${degreesToCardinal(segmentHeading)}</div></div>
+  `;
+
+  // Histogram
+  const bins = 8;
+  const binSize = (max - min) / bins || 0.01;
+  const counts = Array(bins).fill(0);
+  cdas.forEach(v => {
+    const b = Math.min(Math.floor((v - min) / binSize), bins - 1);
+    counts[b]++;
+  });
+  const maxCount = Math.max(...counts, 1);
+  document.getElementById('histBars').innerHTML = counts.map((c,i) => {
+    const pct = (c / maxCount * 100).toFixed(0);
+    const center = min + (i + 0.5) * binSize;
+    const col = cdaColor(center);
+    return `<div class="hist-bar" style="height:${pct}%;background:${col}" title="${c} efforts rond ${center.toFixed(4)} m²"></div>`;
+  }).join('');
+  document.getElementById('histLabels').innerHTML = `<span>${min.toFixed(3)}</span><span>${mean.toFixed(3)}</span><span>${max.toFixed(3)}</span>`;
+
+  // Table
+  const tbody = document.getElementById('effortsBody');
+  tbody.innerHTML = resultsData.map(r => {
+    const ef = r.effort;
+    const w = r.weather;
+    const res = r.result;
+    const dateStr = ef.start_date_local?.substring(0,10) || '—';
+    const timeStr = fmtTime(ef.elapsed_time);
+    const vStr = res.valid ? res.v_kmh.toFixed(1) : '—';
+    const rhoStr = res.valid ? res.rho.toFixed(4) : '—';
+    const cdaStr = res.valid ? `<span class="cda-val" style="color:${cdaColor(res.CdA)}">${res.CdA.toFixed(4)}</span>` : '—';
+    const statusStr = res.valid
+      ? `<span style="color:var(--green)">✓</span>`
+      : `<span style="color:var(--red)" title="${res.reason}">✗</span>`;
+    const warnFallback = w.fallback ? '<span style="color:var(--yellow)" title="Standaard weer gebruikt">⚠</span>' : '';
+
+    // Wind display
+    const windSpeedStr = w.windspeed != null ? w.windspeed.toFixed(1) : '—';
+    let windEffStr = '—';
+    if (res.valid) {
+      const vwh = res.v_wind_head_kmh;
+      const sign = vwh >= 0 ? '+' : '';
+      const col = vwh > 1 ? 'var(--red)' : vwh < -1 ? 'var(--green)' : 'var(--label)';
+      windEffStr = `<span style="color:${col}">${sign}${vwh.toFixed(1)}</span>`;
+    }
+
+    return `<tr>
+      <td>${dateStr}</td>
+      <td>${timeStr}</td>
+      <td>${vStr}</td>
+      <td>${ef.average_watts || '—'}</td>
+      <td>${w.temp?.toFixed(1) || '—'} ${warnFallback}</td>
+      <td>${windSpeedStr} <span style="font-size:8px;color:var(--muted)">${degreesToCardinal(w.winddirection||0)}</span></td>
+      <td>${windEffStr}</td>
+      <td>${rhoStr}</td>
+      <td>${cdaStr}</td>
+      <td>${statusStr}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('s-results-wrap').style.display = 'block';
+  document.getElementById('s-results-wrap').scrollIntoView({ behavior:'smooth' });
+
+  // Update compass card avg wind effect box with real data
+  const avgWindEffReal = valid.reduce((s,r)=>s+(r.result.windComp * (r.weather.windspeed||0)),0)/valid.length;
+  const avgWindSpdReal = valid.reduce((s,r)=>s+(r.weather.windspeed||0),0)/valid.length;
+  document.getElementById('avgWindEffect').textContent =
+    `${avgWindSpdReal.toFixed(1)} km/h gem. · eff. ${avgWindEffReal>=0?'+':''}${avgWindEffReal.toFixed(1)} km/h`;
+
+  // Show recalculate hint on compass card if results exist
+  const existingHint = document.getElementById('recomputeHint');
+  if (!existingHint) {
+    const hint = document.createElement('div');
+    hint.id = 'recomputeHint';
+    hint.style.cssText = 'margin-top:14px;font-size:10px;color:var(--muted);line-height:1.7;';
+    hint.innerHTML = '✓ Analyse klaar. Pas de windrichting aan op het kompas en klik dan <strong style="color:var(--accent);cursor:pointer" onclick="recomputeWithNewHeading()">HERBEREKEN →</strong> om de CdA opnieuw te berekenen met de nieuwe richting.';
+    document.getElementById('windCard').appendChild(hint);
+  }
+}
+
+// ─────────────────────────────────────────────
+// EXPORT CSV
+// ─────────────────────────────────────────────
+function exportCSV() {
+  const rows = [['Datum','Tijd_s','V_kmh','Watt','Temp_C','Druk_hPa','Vochtigheid_%','Wind_kmh','Windrichting_deg','Windeffect_kmh','Luchtdichtheid_kg_m3','CdA_m2','Geldig','Reden']];
+  resultsData.forEach(r => {
+    const ef = r.effort;
+    const w = r.weather;
+    const res = r.result;
+    rows.push([
+      ef.start_date_local?.substring(0,10) || '',
+      ef.elapsed_time || '',
+      res.valid ? res.v_kmh.toFixed(2) : '',
+      ef.average_watts || '',
+      w.temp?.toFixed(1) || '',
+      w.pressure?.toFixed(1) || '',
+      w.humidity?.toFixed(0) || '',
+      w.windspeed?.toFixed(1) || '',
+      w.winddirection?.toFixed(0) || '',
+      res.valid ? res.v_wind_head_kmh.toFixed(2) : '',
+      res.valid ? res.rho.toFixed(5) : '',
+      res.valid ? res.CdA.toFixed(5) : '',
+      res.valid ? 'Ja' : 'Nee',
+      res.valid ? '' : (res.reason || '')
+    ]);
+  });
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `cda_${selectedSegment?.id || 'segment'}.csv`;
+  a.click();
+}
+
+// ─────────────────────────────────────────────
+// HERBEREKEN MET NIEUWE RICHTING
+// ─────────────────────────────────────────────
+function recomputeWithNewHeading() {
+  if (!resultsData.length || !selectedSegment) return;
+  setStatus('loading', `Herberekeningmet segmentrichting ${Math.round(segmentHeading)}° (${degreesToCardinal(segmentHeading)})...`);
+
+  // Recompute CdA for all efforts with current segmentHeading
+  resultsData = resultsData.map(r => ({
+    effort: r.effort,
+    weather: r.weather,
+    result: calcCdA(r.effort, selectedSegment, r.weather)
+  }));
+
+  renderResults();
+  setStatus('ok', `Herberekend — segmentrichting ${Math.round(segmentHeading)}° · ${resultsData.filter(r=>r.result.valid).length} geldige CdA waarden`);
+  document.getElementById('s-results-wrap').scrollIntoView({ behavior:'smooth' });
+}
+
+// ─────────────────────────────────────────────
+// UI HELPERS
+// ─────────────────────────────────────────────
+function showSection(id) {
+  document.querySelectorAll('[data-section]').forEach(el => el.classList.remove('active'));
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+}
+
+function setStatus(type, msg) {
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  dot.className = 'status-dot ' + (type === 'ok' ? 'ok' : type === 'loading' ? 'loading' : type === 'error' ? 'error' : '');
+  txt.textContent = msg;
+}
+
+function setProgress(pct, label) {
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = label;
+}
+
+function log(msg) {
+  const el = document.getElementById('analysisLog');
+  if (!el) return;
+  el.innerHTML += msg + '<br>';
+  el.scrollTop = el.scrollHeight;
+}
+
+function showAlert(type, msg, sectionId) {
+  // Simple: use the status bar
+  setStatus(type === 'err' ? 'error' : 'loading', msg);
+}
+
+function goToSegment() {
+  showSection('s-segment');
+  document.getElementById('s-results-wrap').style.display = 'none';
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function fmtTime(secs) {
+  if (!secs) return '—';
+  const m = Math.floor(secs / 60), s = secs % 60;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function qualityLabel(cda) {
+  if (cda < 0.18) return { text: 'EXTREEM AERO', bg: 'rgba(57,255,20,.15)', color: '#39ff14' };
+  if (cda < 0.24) return { text: 'AERO / TT', bg: 'rgba(57,255,20,.1)', color: '#39ff14' };
+  if (cda < 0.30) return { text: 'DROPS POSITIE', bg: 'rgba(0,212,255,.1)', color: '#00d4ff' };
+  if (cda < 0.38) return { text: 'HOODS POSITIE', bg: 'rgba(255,214,10,.1)', color: '#ffd60a' };
+  if (cda < 0.48) return { text: 'RECHTOP', bg: 'rgba(255,107,53,.1)', color: '#ff6b35' };
+  return { text: 'CONTROLEER DATA', bg: 'rgba(255,59,59,.1)', color: '#ff3b3b' };
+}
+
+function cdaColor(v) {
+  if (v < 0.20) return '#39ff14';
+  if (v < 0.26) return '#00d4ff';
+  if (v < 0.32) return '#ffd60a';
+  if (v < 0.40) return '#ff6b35';
+  return '#ff3b3b';
+}
+</script>
+</body>
+</html>

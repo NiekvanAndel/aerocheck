@@ -1440,9 +1440,9 @@ async function analyzeSegment() {
     resultsData = [];
     for (let i = 0; i < withPower.length; i++) {
       const ef = withPower[i];
-      setProgress(10 + (i / withPower.length) * 80, `Weerdata effort ${i+1}/${withPower.length}: ${ef.start_date_local?.substring(0,10)}`);
+      setProgress(10 + (i / withPower.length) * 80, `Weerdata effort ${i+1}/${withPower.length}: ${ef.start_date?.substring(0,16) || ef.start_date_local?.substring(0,16)} UTC`);
 
-      const weather = await getWeather(lat, lon, ef.start_date_local);
+      const weather = await getWeather(lat, lon, ef.start_date_local, ef.start_date);
       const result = calcCdA(ef, seg, weather);
       resultsData.push({ effort: ef, weather, result });
 
@@ -1481,34 +1481,51 @@ async function loadAllEfforts(segId) {
 
 // ─────────────────────────────────────────────
 // WEATHER — Open-Meteo Archive API
+// Resolution: hourly values. We pick the hour that contains the effort start.
 // ─────────────────────────────────────────────
-async function getWeather(lat, lon, dateTimeStr) {
-  // dateTimeStr: "2023-06-15T14:30:00Z" or "2023-06-15T14:30:00"
-  const dt = new Date(dateTimeStr);
-  const date = dt.toISOString().substring(0,10);
+async function getWeather(lat, lon, dateTimeStrLocal, dateTimeStrUTC) {
+  // Always use the UTC timestamp (start_date from Strava, ends in 'Z') for the
+  // correct absolute moment. start_date_local has no timezone info and would
+  // give the wrong UTC hour if parsed naively.
+  const utcStr = dateTimeStrUTC || dateTimeStrLocal;
+  const dt = new Date(utcStr);          // parsed as UTC because 'Z' suffix present
+
+  // Date in UTC — used as the API start/end date
+  const date = dt.toISOString().substring(0, 10);  // "YYYY-MM-DD" UTC date
+
+  // UTC hour — used to index into the hourly array (API also returns UTC hours)
   const hour = dt.getUTCHours();
 
   try {
-    const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${date}&end_date=${date}&hourly=temperature_2m,surface_pressure,relativehumidity_2m,windspeed_10m,winddirection_10m&timezone=UTC&wind_speed_unit=ms`;
+    // Request in UTC (timezone=UTC) with wind speed in m/s.
+    // Returns 24 hourly values for the day; we pick the index matching the UTC hour.
+    const url = `https://archive-api.open-meteo.com/v1/archive`
+      + `?latitude=${lat}&longitude=${lon}`
+      + `&start_date=${date}&end_date=${date}`
+      + `&hourly=temperature_2m,surface_pressure,relativehumidity_2m,windspeed_10m,winddirection_10m`
+      + `&timezone=UTC`
+      + `&wind_speed_unit=ms`;   // m/s — used directly in calcCdA without conversion
+
     const res = await fetch(url);
     const data = await res.json();
 
     if (!data.hourly) throw new Error('Geen weerdata');
 
     const h = data.hourly;
-    // Use the closest hour
+    // h.time[i] is "YYYY-MM-DDTHH:00" UTC. Pick the hour-slot that contains the effort.
     const idx = Math.min(hour, h.time.length - 1);
 
     return {
-      temp: h.temperature_2m[idx],
-      pressure: h.surface_pressure[idx],
-      humidity: h.relativehumidity_2m[idx],
-      windspeed: h.windspeed_10m[idx],
-      winddirection: h.winddirection_10m[idx],
-      hour: idx
+      temp:         h.temperature_2m[idx],       // °C
+      pressure:     h.surface_pressure[idx],      // hPa
+      humidity:     h.relativehumidity_2m[idx],   // %
+      windspeed:    h.windspeed_10m[idx],          // m/s  ← used as-is in calcCdA
+      winddirection: h.winddirection_10m[idx],     // degrees, meteorological (FROM)
+      hour:         idx,                           // UTC hour used
+      utcTime:      h.time[idx]                   // for display/debug
     };
   } catch(e) {
-    // Fallback ISA standard atmosphere
+    // Fallback: ISA standard atmosphere, zero wind
     return { temp: 15, pressure: 1013.25, humidity: 60, windspeed: 0, winddirection: 0, fallback: true };
   }
 }
@@ -1711,7 +1728,9 @@ function renderResults() {
     const statusStr = res.valid
       ? `<span style="color:var(--green)">✓</span>`
       : `<span style="color:var(--red)" title="${res.reason}">✗</span>`;
-    const warnFallback = w.fallback ? '<span style="color:var(--yellow)" title="Standaard weerdata gebruikt">⚠</span>' : '';
+    const warnFallback = w.fallback
+      ? '<span style="color:var(--yellow)" title="Open-Meteo niet beschikbaar — standaard ISA-atmosfeer gebruikt (15°C, 1013 hPa, windstil)">⚠</span>'
+      : `<span style="font-size:8px;color:var(--muted)" title="Uurwaarde UTC ${w.utcTime || ''}">uur ${w.hour ?? '?'}</span>`;
 
     // Wind display — weather.windspeed in m/s, convert to km/h for display
     const windSpeedStr = w.windspeed != null ? (w.windspeed * 3.6).toFixed(1) : '—';

@@ -676,6 +676,10 @@ td.check-cell, th.check-cell {
         <label>Client ID</label>
         <input type="text" id="clientId" placeholder="bv. 12345" autocomplete="off">
       </div>
+      <div class="field">
+        <label>Client Secret</label>
+        <input type="password" id="clientSecret" placeholder="••••••••••••••••••" autocomplete="off">
+      </div>
     </div>
     <div class="btn-row">
       <button class="btn orange-btn btn-full" onclick="stravaConnect()"><span>VERBINDEN MET STRAVA →</span></button>
@@ -1037,6 +1041,7 @@ let selectedSegment = null;
 let allEfforts = [];
 let resultsData = [];
 let clientId = '';
+let clientSecret = '';
 
 // ─────────────────────────────────────────────
 // INIT
@@ -1044,9 +1049,11 @@ let clientId = '';
 window.onload = async function() {
   initTheme();
 
-  // Restore client ID from sessionStorage
-  clientId = sessionStorage.getItem('strava_cid') || '';
-  if (clientId) document.getElementById('clientId').value = clientId;
+  // Restore credentials from sessionStorage
+  clientId     = sessionStorage.getItem('strava_cid') || '';
+  clientSecret = sessionStorage.getItem('strava_cs')  || '';
+  if (clientId)     document.getElementById('clientId').value     = clientId;
+  if (clientSecret) document.getElementById('clientSecret').value = clientSecret;
 
   // Check OAuth callback
   const params = new URLSearchParams(window.location.search);
@@ -1078,36 +1085,17 @@ window.onload = async function() {
 };
 
 // ─────────────────────────────────────────────
-// AUTH — OAuth 2.0 PKCE (no client secret needed)
+// AUTH
 // ─────────────────────────────────────────────
-
-// Generate a cryptographically random code verifier (43–128 chars, URL-safe)
-async function generatePKCE() {
-  const array = new Uint8Array(48);
-  crypto.getRandomValues(array);
-  const verifier = btoa(String.fromCharCode(...array))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-
-  // SHA-256 hash → base64url = code challenge
-  const encoder = new TextEncoder();
-  const data = encoder.encode(verifier);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-
-  return { verifier, challenge };
-}
-
 async function stravaConnect() {
-  clientId = document.getElementById('clientId').value.trim();
-  if (!clientId) {
-    setStatus('error', 'Vul je Client ID in.');
+  clientId     = document.getElementById('clientId').value.trim();
+  clientSecret = document.getElementById('clientSecret').value.trim();
+  if (!clientId || !clientSecret) {
+    setStatus('error', 'Vul Client ID en Client Secret in.');
     return;
   }
   sessionStorage.setItem('strava_cid', clientId);
-
-  const { verifier, challenge } = await generatePKCE();
-  sessionStorage.setItem('strava_pkce_verifier', verifier);
+  sessionStorage.setItem('strava_cs',  clientSecret);
 
   const redirectUri = window.location.origin + window.location.pathname;
   const url = `${STRAVA_AUTH_URL}`
@@ -1115,30 +1103,26 @@ async function stravaConnect() {
     + `&redirect_uri=${encodeURIComponent(redirectUri)}`
     + `&response_type=code`
     + `&approval_prompt=auto`
-    + `&scope=read,activity:read_all`
-    + `&code_challenge=${challenge}`
-    + `&code_challenge_method=S256`;
+    + `&scope=read,activity:read_all`;
   window.location.href = url;
 }
 
 async function exchangeToken(code) {
-  clientId = sessionStorage.getItem('strava_cid') || '';
-  const verifier = sessionStorage.getItem('strava_pkce_verifier') || '';
-
-  if (!clientId || !verifier) {
-    setStatus('error', 'Sessie verlopen — probeer opnieuw te verbinden.');
+  clientId     = sessionStorage.getItem('strava_cid') || '';
+  clientSecret = sessionStorage.getItem('strava_cs')  || '';
+  if (!clientId || !clientSecret) {
+    setStatus('error', 'Sessie verlopen — vul credentials opnieuw in.');
     showSection('s-setup');
     return;
   }
-
   try {
     const res = await fetch(STRAVA_TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         client_id:     clientId,
+        client_secret: clientSecret,
         code:          code,
-        code_verifier: verifier,
         grant_type:    'authorization_code'
       })
     });
@@ -1147,7 +1131,6 @@ async function exchangeToken(code) {
       throw new Error(JSON.stringify(data.errors || data.message || 'Onbekende fout'));
     }
     token = data;
-    sessionStorage.removeItem('strava_pkce_verifier'); // clean up
     sessionStorage.setItem('strava_token', JSON.stringify(token));
     await onAuthenticated();
   } catch(e) {

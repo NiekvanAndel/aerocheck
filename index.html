@@ -1331,8 +1331,8 @@ function updateWindEffectDisplay() {
   el.textContent = eff.toFixed(2);
 
   let chipClass, chipText;
-  if (diff < 45 || diff > 315) { chipClass = 'head'; chipText = 'HEADWIND'; }
-  else if (diff > 135 && diff < 225) { chipClass = 'tail'; chipText = 'TAILWIND'; }
+  if (diff < 90 || diff > 270) { chipClass = 'head'; chipText = 'HEADWIND'; }
+  else if (diff > 90 && diff < 270) { chipClass = 'tail'; chipText = 'TAILWIND'; }
   else { chipClass = 'cross'; chipText = 'ZIJWIND'; }
 
   chip.innerHTML = `<span class="angle-chip ${chipClass}">${chipText}</span>
@@ -1592,7 +1592,7 @@ function calcCdA(effort, seg, weather) {
   if (diff > 180) diff = 360 - diff;                                  // fold to 0–180°
   const crossAngle = Math.min(diff, 180 - diff);                      // 0–90°: 0=aligned, 90=pure side
 
-  if (windMs > 1.0 && crossAngle > 45) {
+  if (windMs > 1.0 && crossAngle > 90) {
     return { valid: false, reason: `Zijwind gefilterd (${Math.round(crossAngle)}° van rij-as, max 45°)` };
   }
 

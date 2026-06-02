@@ -1335,12 +1335,21 @@ function calcCdA(effort, seg, weather) {
   const windMs = weather.windspeed || 0;                // already m/s
   const windComp = windEffectComponent(weather.winddirection || 0);
 
-  // Reject efforts where wind is more than 45° off the riding direction
-  // (i.e. significant crosswind). cos(45°) ≈ 0.707 — only keep |windComp| >= cos(45°)
-  const windAngleDiff = ((weather.winddirection - segmentHeading) + 360) % 360;
-  const absAngleDiff = Math.min(windAngleDiff, 360 - windAngleDiff); // 0–180°
-  if (windMs > 1.0 && absAngleDiff > 45) {
-    return { valid: false, reason: `Zijwind gefilterd (${Math.round(absAngleDiff)}° van rijrichting, max 45°)` };
+  // Crosswind filter: only reject true sidewinds.
+  // Meteorological convention: windDirection = where wind comes FROM.
+  // Convert to wind travel direction (where wind goes TO) = windDirection + 180°.
+  // Then compare wind travel direction to riding direction.
+  // A tailwind (wind coming from behind = same as riding direction) gives 0° → keep.
+  // A headwind (wind coming from ahead) gives 180° → keep (it's aligned, just opposing).
+  // Pure crosswind gives 90° → reject.
+  // Filter: reject if the angle between wind travel vector and riding axis > 45°
+  // i.e. keep only if the wind is within 45° of head- or tailwind axis.
+  const windTravelDir = (weather.winddirection + 180) % 360;
+  const windAxisDiff  = ((windTravelDir - segmentHeading) + 360) % 360; // 0–360°
+  // Fold into 0–180°, then measure distance from 0° (tailwind) or 180° (headwind)
+  const windAligned   = Math.min(windAxisDiff, 360 - windAxisDiff); // 0° = tailwind/headwind axis, 90° = pure side
+  if (windMs > 1.0 && windAligned > 45) {
+    return { valid: false, reason: `Zijwind gefilterd (${Math.round(windAligned)}° van rij-as, max 45°)` };
   }
 
   const v_wind_head = windMs * windComp;                // m/s, positive = headwind
@@ -1374,7 +1383,7 @@ function calcCdA(effort, seg, weather) {
     v_air_kmh: v_air * 3.6,
     v_wind_head_kmh: v_wind_head * 3.6,
     windspeed_kmh: (weather.windspeed || 0) * 3.6,
-    windAngleDiff: absAngleDiff,
+    windAngleDiff: windAligned,   // 0° = head/tailwind, 90° = pure crosswind
     windComp,
     W_aero,
     W_rolling,

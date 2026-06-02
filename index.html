@@ -504,6 +504,74 @@ select option { background:var(--surface); }
 .legend-desc strong { color: var(--text); }
 .legend-desc em { color: var(--muted); font-style: normal; }
 
+/* ROW CHECKBOXES */
+.row-check {
+  width: 15px; height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.eff-results tr.row-selected td { background: rgba(0,212,255,.06); }
+.eff-results tr.row-selected { outline: 1px solid rgba(0,212,255,.2); }
+td.check-cell, th.check-cell {
+  width: 28px;
+  padding: 7px 8px !important;
+  text-align: center;
+}
+
+/* SELECTION TOOLBAR */
+.sel-toolbar {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--surface2);
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  padding: 10px 16px;
+  margin-bottom: 14px;
+  font-size: 10px;
+  animation: fadeIn .2s ease;
+}
+.sel-toolbar.visible { display: flex; }
+.sel-count {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.sel-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sel-stat .ss-label { font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
+.sel-stat .ss-val   { font-size: 13px; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; color: var(--text); }
+.sel-divider { width: 1px; height: 32px; background: var(--border); flex-shrink: 0; }
+.sel-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.sel-btn {
+  padding: 5px 12px;
+  border-radius: 2px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--label);
+  transition: border-color .2s, color .2s;
+}
+.sel-btn:hover { border-color: var(--accent); color: var(--accent); }
+.sel-btn.sel-btn-clear { border-color: var(--border); }
+.sel-btn.sel-btn-apply {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(0,212,255,.07);
+}
+.sel-btn.sel-btn-apply:hover { background: var(--accent); color: var(--bg); }
+
 /* WIND DIRECTION CARD */
 .wind-card { display:none; }
 .wind-card.visible { display:block; }
@@ -911,10 +979,44 @@ select option { background:var(--surface); }
         </div>
       </div>
 
+      <!-- SELECTION TOOLBAR (shown when rows are checked) -->
+      <div class="sel-toolbar" id="selToolbar">
+        <div class="sel-count" id="selCount">0 geselecteerd</div>
+        <div class="sel-divider"></div>
+        <div class="sel-stat">
+          <div class="ss-label">Gemiddelde</div>
+          <div class="ss-val" id="selMean">—</div>
+        </div>
+        <div class="sel-stat">
+          <div class="ss-label">Std. Dev.</div>
+          <div class="ss-val" id="selSd">—</div>
+        </div>
+        <div class="sel-stat">
+          <div class="ss-label">Min</div>
+          <div class="ss-val" id="selMin">—</div>
+        </div>
+        <div class="sel-stat">
+          <div class="ss-label">Max</div>
+          <div class="ss-val" id="selMax">—</div>
+        </div>
+        <div class="sel-stat">
+          <div class="ss-label">Mediaan</div>
+          <div class="ss-val" id="selMedian">—</div>
+        </div>
+        <div class="sel-actions">
+          <button class="sel-btn sel-btn-clear" onclick="clearSelection()">WISSEN</button>
+          <button class="sel-btn" onclick="selectValid()">SELECTEER GELDIGE</button>
+          <button class="sel-btn sel-btn-apply" onclick="applySelectionToChart()">TOON IN GRAFIEK ↑</button>
+        </div>
+      </div>
+
       <div class="eff-results">
         <table id="effortsTable">
           <thead>
             <tr>
+              <th class="check-cell">
+                <input type="checkbox" class="row-check" id="checkAll" onclick="toggleAll(this)" title="Alles aan/uit">
+              </th>
               <th>Datum / Activiteit</th>
               <th>Tijd</th>
               <th>V km/h</th>
@@ -1593,7 +1695,7 @@ function renderResults() {
   document.getElementById('histLabels').innerHTML = `<span>${min.toFixed(3)}</span><span>${mean.toFixed(3)}</span><span>${max.toFixed(3)}</span>`;
 
   // ── SCATTER CHART ──
-  renderScatterChart(valid, mean, sd);
+  renderScatterChart(valid, mean, sd, undefined);
 
   // Table
   const tbody = document.getElementById('effortsBody');
@@ -1637,18 +1739,24 @@ function renderResults() {
     </a>`;
 
     const rowStyle = res.valid ? '' : 'opacity:0.45;';
-    return `<tr style="${rowStyle}cursor:pointer;" onclick="window.open('${stravaUrl}','_blank')">
-      <td>${dateCell}</td>
-      <td>${timeStr}</td>
-      <td>${vStr}</td>
-      <td>${ef.average_watts || '—'}</td>
-      <td>${w.temp?.toFixed(1) || '—'} ${warnFallback}</td>
-      <td>${windSpeedStr} <span style="font-size:8px;color:var(--muted)">${degreesToCardinal(w.winddirection||0)}</span></td>
-      <td>${windAngleStr}</td>
-      <td>${windEffStr}</td>
-      <td>${rhoStr}</td>
-      <td>${cdaStr}</td>
-      <td>${statusStr}</td>
+    const checkedDefault = res.valid ? 'checked' : '';
+    const rowIdx = resultsData.indexOf(r);
+    return `<tr style="${rowStyle}cursor:pointer;" id="erow-${rowIdx}" class="${res.valid ? 'row-selected' : ''}">
+      <td class="check-cell" onclick="event.stopPropagation()">
+        <input type="checkbox" class="row-check" id="chk-${rowIdx}" ${checkedDefault}
+          onchange="onRowCheck(${rowIdx}, this.checked)" onclick="event.stopPropagation()">
+      </td>
+      <td onclick="window.open('${stravaUrl}','_blank')">${dateCell}</td>
+      <td onclick="window.open('${stravaUrl}','_blank')">${timeStr}</td>
+      <td onclick="window.open('${stravaUrl}','_blank')">${vStr}</td>
+      <td onclick="window.open('${stravaUrl}','_blank')">${ef.average_watts || '—'}</td>
+      <td onclick="window.open('${stravaUrl}','_blank')">${w.temp?.toFixed(1) || '—'} ${warnFallback}</td>
+      <td onclick="window.open('${stravaUrl}','_blank')">${windSpeedStr} <span style="font-size:8px;color:var(--muted)">${degreesToCardinal(w.winddirection||0)}</span></td>
+      <td onclick="window.open('${stravaUrl}','_blank')">${windAngleStr}</td>
+      <td onclick="window.open('${stravaUrl}','_blank')">${windEffStr}</td>
+      <td onclick="window.open('${stravaUrl}','_blank')">${rhoStr}</td>
+      <td onclick="window.open('${stravaUrl}','_blank')">${cdaStr}</td>
+      <td onclick="window.open('${stravaUrl}','_blank')">${statusStr}</td>
     </tr>`;
   }).join('');
 
@@ -1709,7 +1817,7 @@ function exportCSV() {
 // ─────────────────────────────────────────────
 // SCATTER CHART — CdA over tijd
 // ─────────────────────────────────────────────
-function renderScatterChart(valid, mean, sd) {
+function renderScatterChart(valid, mean, sd, selectedIndices) {
   const canvas = document.getElementById('scatterCanvas');
   if (!canvas) return;
 
@@ -1861,34 +1969,48 @@ function renderScatterChart(valid, mean, sd) {
   // ── DOTS — valid, with hover tracking ──
   // Store dot positions for click handling
   canvas._dots = [];
+
+  // When selectedIndices is provided, we're showing a custom selection —
+  // dim dots that are not in the selection
+  const hasSelection = selectedIndices instanceof Set && selectedIndices.size > 0;
+
   valid.forEach(r => {
     const ts = new Date(r.effort.start_date_local).getTime();
     if (!ts) return;
     const x = xPos(ts);
     const y = yPos(r.result.CdA);
+
+    // Find original index in resultsData for selection check
+    const origIdx = resultsData.indexOf(r);
+    const isSelected = !hasSelection || selectedIndices.has(origIdx);
+    const dotAlpha = isSelected ? 1 : 0.2;
+
     // Glow
     const glowColor = isLight ? 'rgba(0,120,180,' : 'rgba(0,220,255,';
     const grad = ctx.createRadialGradient(x, y, 0, x, y, 10);
-    grad.addColorStop(0, glowColor + '0.2)');
+    grad.addColorStop(0, glowColor + (isSelected ? '0.2' : '0.04') + ')');
     grad.addColorStop(1, glowColor + '0)');
     ctx.beginPath();
     ctx.arc(x, y, 10, 0, Math.PI * 2);
     ctx.fillStyle = grad;
     ctx.fill();
+
     // Dot
+    ctx.globalAlpha = dotAlpha;
     ctx.beginPath();
     ctx.arc(x, y, 5, 0, Math.PI * 2);
     ctx.fillStyle = BG;
     ctx.fill();
-    ctx.strokeStyle = ACCENT;
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = isSelected ? ACCENT : (isLight ? '#aabbcc' : '#334466');
+    ctx.lineWidth = isSelected ? 2 : 1;
     ctx.stroke();
+    ctx.globalAlpha = 1;
 
     const actId = r.effort.activity?.id || r.effort.activity_id;
     const url = actId
       ? `https://www.strava.com/activities/${actId}`
       : `https://www.strava.com/segment_efforts/${r.effort.id}`;
-    canvas._dots.push({ x, y, r: 8, url, label: r.effort.start_date_local?.substring(0,10), cda: r.result.CdA });
+    canvas._dots.push({ x, y, r: 8, url, label: r.effort.start_date_local?.substring(0,10), cda: r.result.CdA, selected: isSelected });
   });
 
   // ── TOOLTIP + CLICK ──
@@ -1901,7 +2023,7 @@ function renderScatterChart(valid, mean, sd) {
     }
     canvas.style.cursor = hit ? 'pointer' : 'default';
     // Redraw with tooltip
-    renderScatterChart(valid, mean, sd);
+    renderScatterChart(valid, mean, sd, selectedIndices);
     if (hit) {
       const tx = Math.min(hit.x + 10, W - 130);
       const ty = Math.max(hit.y - 38, PAD.top);
@@ -2009,6 +2131,142 @@ function toggleLegend() {
   btn.textContent = isOpen ? '? KOLOMLEGENDA' : '✕ SLUIT LEGENDA';
   btn.style.color = isOpen ? 'var(--label)' : 'var(--accent)';
   btn.style.borderColor = isOpen ? 'var(--border)' : 'var(--accent)';
+}
+
+// ─────────────────────────────────────────────
+// ROW SELECTION
+// ─────────────────────────────────────────────
+function onRowCheck(rowIdx, checked) {
+  const row = document.getElementById('erow-' + rowIdx);
+  if (row) row.classList.toggle('row-selected', checked);
+  updateSelectionToolbar();
+}
+
+function toggleAll(masterChk) {
+  const checked = masterChk.checked;
+  resultsData.forEach((_, i) => {
+    const chk = document.getElementById('chk-' + i);
+    const row = document.getElementById('erow-' + i);
+    if (chk) chk.checked = checked;
+    if (row) row.classList.toggle('row-selected', checked);
+  });
+  updateSelectionToolbar();
+}
+
+function selectValid() {
+  resultsData.forEach((r, i) => {
+    const checked = r.result.valid;
+    const chk = document.getElementById('chk-' + i);
+    const row = document.getElementById('erow-' + i);
+    if (chk) chk.checked = checked;
+    if (row) row.classList.toggle('row-selected', checked);
+  });
+  // Update master checkbox state
+  syncMasterCheckbox();
+  updateSelectionToolbar();
+}
+
+function clearSelection() {
+  resultsData.forEach((_, i) => {
+    const chk = document.getElementById('chk-' + i);
+    const row = document.getElementById('erow-' + i);
+    if (chk) chk.checked = false;
+    if (row) row.classList.remove('row-selected');
+  });
+  const master = document.getElementById('checkAll');
+  if (master) { master.checked = false; master.indeterminate = false; }
+  updateSelectionToolbar();
+}
+
+function syncMasterCheckbox() {
+  const total = resultsData.length;
+  const checked = getSelectedIndices().length;
+  const master = document.getElementById('checkAll');
+  if (!master) return;
+  if (checked === 0) { master.checked = false; master.indeterminate = false; }
+  else if (checked === total) { master.checked = true; master.indeterminate = false; }
+  else { master.checked = false; master.indeterminate = true; }
+}
+
+function getSelectedIndices() {
+  return resultsData.map((_, i) => {
+    const chk = document.getElementById('chk-' + i);
+    return (chk && chk.checked) ? i : null;
+  }).filter(i => i !== null);
+}
+
+function getSelectionStats() {
+  const indices = getSelectedIndices();
+  // Only use entries that have a valid CdA value
+  const cdas = indices
+    .map(i => resultsData[i])
+    .filter(r => r.result.valid)
+    .map(r => r.result.CdA);
+  if (!cdas.length) return null;
+  const mean = cdas.reduce((a,b)=>a+b,0) / cdas.length;
+  const variance = cdas.reduce((s,v)=>s+(v-mean)**2,0) / cdas.length;
+  const sd = Math.sqrt(variance);
+  const sorted = [...cdas].sort((a,b)=>a-b);
+  const median = sorted[Math.floor(sorted.length/2)];
+  return { n: cdas.length, mean, sd, min: sorted[0], max: sorted[sorted.length-1], median };
+}
+
+function updateSelectionToolbar() {
+  syncMasterCheckbox();
+  const indices = getSelectedIndices();
+  const toolbar = document.getElementById('selToolbar');
+  if (!indices.length) {
+    toolbar.classList.remove('visible');
+    return;
+  }
+  toolbar.classList.add('visible');
+
+  const stats = getSelectionStats();
+  document.getElementById('selCount').textContent = `${indices.length} geselecteerd`;
+
+  if (stats) {
+    document.getElementById('selMean').textContent   = stats.mean.toFixed(4) + ' m²';
+    document.getElementById('selSd').textContent     = '± ' + stats.sd.toFixed(4);
+    document.getElementById('selMin').textContent    = stats.min.toFixed(4);
+    document.getElementById('selMax').textContent    = stats.max.toFixed(4);
+    document.getElementById('selMedian').textContent = stats.median.toFixed(4);
+  } else {
+    ['selMean','selSd','selMin','selMax','selMedian'].forEach(id => {
+      document.getElementById(id).textContent = '—';
+    });
+  }
+}
+
+function applySelectionToChart() {
+  const indices = new Set(getSelectedIndices());
+  // Build a filtered view: only selected rows that have valid CdA
+  const selected = resultsData.filter((r, i) => indices.has(i) && r.result.valid);
+  if (!selected.length) return;
+
+  const cdas = selected.map(r => r.result.CdA);
+  const mean = cdas.reduce((a,b)=>a+b,0)/cdas.length;
+  const variance = cdas.reduce((s,v)=>s+(v-mean)**2,0)/cdas.length;
+  const sd = Math.sqrt(variance);
+
+  // Update hero stats
+  const q = qualityLabel(mean);
+  document.getElementById('resCdA').textContent = mean.toFixed(4);
+  document.getElementById('resCdA').style.color = q.color;
+  document.getElementById('resCdA').style.textShadow = `0 0 50px ${q.color}30`;
+  document.getElementById('resSd').textContent = `± ${sd.toFixed(4)} m² (1σ) — ${selected.length} efforts geselecteerd`;
+  const qBadge = document.getElementById('resQuality');
+  qBadge.textContent = q.text + ' (selectie)';
+  qBadge.style.background = q.bg;
+  qBadge.style.color = q.color;
+
+  // Update label
+  document.querySelector('.rh-label').textContent = `// gemiddelde CdA — ${selected.length} geselecteerde efforts`;
+
+  // Redraw chart with selected subset highlighted
+  renderScatterChart(selected, mean, sd, indices);
+
+  // Scroll to chart
+  document.getElementById('scatterCard').scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
 function escHtml(str) {

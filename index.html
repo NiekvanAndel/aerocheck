@@ -1190,15 +1190,38 @@ function renderSegmentList(list) {
   }
   const html = `<div class="seg-list" id="segList">` +
     list.map(s => `
-      <div class="seg-item" id="si-${s.id}" onclick="selectSegment(${s.id}, '${escHtml(s.name)}', ${s.distance}, ${s.total_elevation_gain}, ${JSON.stringify(s.start_latlng)}, ${JSON.stringify(s.end_latlng)})">
+      <div class="seg-item" id="si-${s.id}" onclick="loadAndSelectSegment(${s.id})">
         <div>
           <div class="seg-name">${escHtml(s.name)}</div>
-          <div class="seg-meta">${(s.distance/1000).toFixed(2)} km · ${s.total_elevation_gain}m hoogteverschil · ${s.effort_count || '?'} efforts</div>
+          <div class="seg-meta">${(s.distance/1000).toFixed(2)} km · ${s.total_elevation_gain != null ? s.total_elevation_gain : '?'}m hoogteverschil · ${s.effort_count || '?'} efforts</div>
         </div>
         <div class="seg-badge">${(s.distance/1000).toFixed(1)}km</div>
       </div>`
     ).join('') + `</div>`;
   wrap.innerHTML = html;
+}
+
+// Always fetch full segment detail before selecting — ensures start_latlng,
+// end_latlng and total_elevation_gain are present (starred list omits them)
+async function loadAndSelectSegment(id) {
+  try {
+    setStatus('loading', `Segment ${id} laden...`);
+    const s = await stravaGet(`/segments/${id}`);
+    if (!segments.find(x => x.id == s.id)) segments.unshift(s);
+    // Update the list item in case it was a stub
+    const idx = segments.findIndex(x => x.id == s.id);
+    if (idx !== -1) segments[idx] = s;
+    selectSegment(
+      s.id, s.name,
+      s.distance        || 0,
+      s.total_elevation_gain != null ? s.total_elevation_gain : 0,
+      s.start_latlng    || null,
+      s.end_latlng      || null
+    );
+    setStatus('ok', `Segment geladen: ${s.name}`);
+  } catch(e) {
+    setStatus('error', 'Segment laden mislukt: ' + e.message);
+  }
 }
 
 function filterSegments() {
@@ -1210,17 +1233,7 @@ function filterSegments() {
 async function loadSegmentById() {
   const id = document.getElementById('customSegId').value.trim();
   if (!id) return;
-  try {
-    setStatus('loading', `Segment ${id} laden...`);
-    const s = await stravaGet(`/segments/${id}`);
-    // Add to list if not there
-    if (!segments.find(x => x.id == s.id)) segments.unshift(s);
-    renderSegmentList(segments);
-    selectSegment(s.id, s.name, s.distance, s.total_elevation_gain, s.start_latlng, s.end_latlng);
-    setStatus('ok', `Segment geladen: ${s.name}`);
-  } catch(e) {
-    setStatus('error', 'Segment laden mislukt: ' + e.message);
-  }
+  await loadAndSelectSegment(id);
 }
 
 function selectSegment(id, name, distance, elevation, startLl, endLl) {
@@ -1228,20 +1241,25 @@ function selectSegment(id, name, distance, elevation, startLl, endLl) {
   const el = document.getElementById('si-' + id);
   if (el) el.classList.add('selected');
 
-  // Compute segment bearing from start → end latlng
+  // Sanitise — some fields may be null/undefined from the API
+  const safeDist  = parseFloat(distance)  || 0;
+  const safeElev  = parseFloat(elevation) || 0;  // null → 0 (flat segment)
+  const safeStart = Array.isArray(startLl) && startLl.length === 2 ? startLl : null;
+  const safeEnd   = Array.isArray(endLl)   && endLl.length === 2   ? endLl   : null;
+
+  // Compute bearing from coordinates if available
   let bearing = 0;
-  if (startLl && endLl && startLl.length === 2 && endLl.length === 2) {
-    bearing = calcBearing(startLl[0], startLl[1], endLl[0], endLl[1]);
+  if (safeStart && safeEnd) {
+    bearing = calcBearing(safeStart[0], safeStart[1], safeEnd[0], safeEnd[1]);
   }
 
-  selectedSegment = { id, name, distance, elevation, startLl, endLl, bearing };
-  segmentHeading = bearing;
-  windDirection = 0; // reset wind direction
+  selectedSegment = { id, name, distance: safeDist, elevation: safeElev, startLl: safeStart, endLl: safeEnd, bearing };
+  segmentHeading  = bearing;
+  windDirection   = 0;
 
   document.getElementById('btnAnalyze').disabled = false;
-  setStatus('ok', `Geselecteerd: "${name}" (${(distance/1000).toFixed(2)} km, ${elevation}m hoogte, richting ${bearing.toFixed(0)}°)`);
+  setStatus('ok', `Geselecteerd: "${name}" (${(safeDist/1000).toFixed(2)} km, ${safeElev}m hoogte, richting ${bearing.toFixed(0)}°)`);
 
-  // Show compass card and initialise it
   document.getElementById('windCard').classList.add('visible');
   initCompass(bearing);
   document.getElementById('windCard').scrollIntoView({ behavior:'smooth', block:'nearest' });

@@ -496,6 +496,23 @@ select option { background:var(--surface); }
 .toggle-switch input:checked + .toggle-track { background:var(--accent); }
 .toggle-switch input:checked + .toggle-track .toggle-thumb { transform:translateX(16px); }
 
+/* PRESET FILTER BUTTONS */
+.preset-btn {
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--label);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: border-color .2s, color .2s, background .2s;
+  white-space: nowrap;
+}
+.preset-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--surface3); }
+.preset-btn.active { border-color: var(--accent); color: var(--bg); background: var(--accent); }
+
 /* NOTE */
 .note { font-size:9px; color:var(--muted); letter-spacing:.5px; line-height:1.7; padding-top:14px; border-top:1px solid var(--border); margin-top:14px; }
 .note strong { color:var(--orange); }
@@ -925,8 +942,19 @@ td.check-cell, th.check-cell {
 
     <!-- CdA SCATTER CHART -->
     <div class="card blue" id="scatterCard">
-      <div class="card-title"><span class="card-dot"></span>CdA over tijd</div>
-      <!-- Scrollable wrapper on mobile: min-width ensures enough pixels to show all data -->
+      <div class="card-title"><span class="card-dot"></span>CdA over tijd
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:9px;">
+          <span style="color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Toon:</span>
+          <button id="scatterToggleRaw" onclick="setScatterMode('raw')"
+            style="padding:3px 9px;border-radius:2px;font-family:'IBM Plex Mono',monospace;font-size:9px;
+                   letter-spacing:1px;cursor:pointer;border:1px solid var(--accent);
+                   background:var(--accent);color:var(--bg);transition:all .2s;">CdA</button>
+          <button id="scatterToggleCorr" onclick="setScatterMode('corrected')"
+            style="padding:3px 9px;border-radius:2px;font-family:'IBM Plex Mono',monospace;font-size:9px;
+                   letter-spacing:1px;cursor:pointer;border:1px solid var(--border);
+                   background:transparent;color:var(--label);transition:all .2s;">CdA wind-gecorr.</button>
+        </div>
+      </div>
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
         <div style="position:relative;min-width:600px;height:260px;">
           <canvas id="scatterCanvas" style="width:100%;height:260px;display:block;"></canvas>
@@ -951,6 +979,21 @@ td.check-cell, th.check-cell {
           onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--label)'">
           ? KOLOMLEGENDA
         </button>
+      </div>
+
+      <!-- PRESET FILTERS -->
+      <div style="margin-bottom:14px;">
+        <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">// snelfilters</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="preset-btn" onclick="applyPreset('valid')" title="Alleen geldige efforts (standaard)">✓ Alleen geldig</button>
+          <button class="preset-btn" onclick="applyPreset('no_outliers')" title="Geldige efforts binnen 2σ van mediaan">σ Geen outliers (&lt;2σ)</button>
+          <button class="preset-btn" onclick="applyPreset('no_outliers_1sd')" title="Geldige efforts binnen 1σ van mediaan — meest consistente set">σ Kern (&lt;1σ)</button>
+          <span style="width:1px;background:var(--border);margin:0 2px;"></span>
+          <button class="preset-btn" onclick="applyPreset('wind_calm')" title="Windeffect tussen -2 en +2 km/h — vrijwel windstil">🌬 Windstil (|eff|&lt;2)</button>
+          <button class="preset-btn" onclick="applyPreset('wind_head')" title="Tegenwind ≥ 3 km/h">↑ Tegenwind (≥3)</button>
+          <button class="preset-btn" onclick="applyPreset('wind_tail')" title="Meewind ≤ -3 km/h">↓ Meewind (≤-3)</button>
+          <button class="preset-btn" onclick="applyPreset('wind_low')" title="Absolute windsnelheid onder 5 km/h — minimale windcorrectie-onzekerheid">🎯 Lage wind (&lt;5)</button>
+        </div>
       </div>
 
       <!-- COLUMN LEGEND -->
@@ -1072,6 +1115,7 @@ td.check-cell, th.check-cell {
               <th>Windeff. km/h</th>
               <th>ρ kg/m³</th>
               <th>CdA m²</th>
+              <th style="color:var(--green)">CdA wind-gecorr.</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -1111,7 +1155,84 @@ let allEfforts = [];
 let resultsData = [];
 let clientId = '';
 let clientSecret = '';
-let crosswindFilterEnabled = true; // default: on
+let crosswindFilterEnabled = true;
+let scatterMode = 'raw'; // 'raw' | 'corrected'
+
+function setScatterMode(mode) {
+  scatterMode = mode;
+  document.getElementById('scatterToggleRaw').style.background   = mode === 'raw' ? 'var(--accent)' : 'transparent';
+  document.getElementById('scatterToggleRaw').style.color        = mode === 'raw' ? 'var(--bg)'     : 'var(--label)';
+  document.getElementById('scatterToggleRaw').style.borderColor  = mode === 'raw' ? 'var(--accent)' : 'var(--border)';
+  document.getElementById('scatterToggleCorr').style.background  = mode === 'corrected' ? 'var(--accent)' : 'transparent';
+  document.getElementById('scatterToggleCorr').style.color       = mode === 'corrected' ? 'var(--bg)'     : 'var(--label)';
+  document.getElementById('scatterToggleCorr').style.borderColor = mode === 'corrected' ? 'var(--accent)' : 'var(--border)';
+  // Redraw with current valid data
+  if (!resultsData.length) return;
+  const valid = resultsData.filter(r => r.result.valid);
+  if (!valid.length) return;
+  const vals = valid.map(r => scatterMode === 'corrected' ? r.result.CdA_corrected : r.result.CdA);
+  const mean = vals.reduce((a,b)=>a+b,0)/vals.length;
+  const sd   = Math.sqrt(vals.reduce((s,v)=>s+(v-mean)**2,0)/vals.length);
+  renderScatterChart(valid, mean, sd, undefined);
+}
+
+// ── PRESET FILTERS ──
+// Outlier threshold: computed once after renderResults sets _currentStats
+function computeOutlierThreshold(sigma) {
+  const valid = resultsData.filter(r => r.result.valid);
+  const cdas  = valid.map(r => r.result.CdA);
+  const sorted = [...cdas].sort((a,b)=>a-b);
+  const median = sorted[Math.floor(sorted.length/2)];
+  const sd = Math.sqrt(cdas.reduce((s,v)=>s+(v-median)**2,0)/cdas.length);
+  return { median, sd, threshold: sigma * sd };
+}
+
+function applyPreset(preset) {
+  // Highlight active preset button
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+
+  const valid = resultsData.filter(r => r.result.valid);
+  const { median, sd } = computeOutlierThreshold(1);
+
+  let matchFn;
+  switch(preset) {
+    case 'valid':
+      matchFn = (r, i) => r.result.valid;
+      break;
+    case 'no_outliers':
+      matchFn = (r) => r.result.valid && Math.abs(r.result.CdA - median) <= 2 * sd;
+      break;
+    case 'no_outliers_1sd':
+      matchFn = (r) => r.result.valid && Math.abs(r.result.CdA - median) <= sd;
+      break;
+    case 'wind_calm':
+      matchFn = (r) => r.result.valid && Math.abs(r.result.v_wind_head_kmh) < 2;
+      break;
+    case 'wind_head':
+      matchFn = (r) => r.result.valid && r.result.v_wind_head_kmh >= 3;
+      break;
+    case 'wind_tail':
+      matchFn = (r) => r.result.valid && r.result.v_wind_head_kmh <= -3;
+      break;
+    case 'wind_low':
+      matchFn = (r) => r.result.valid && (r.weather.windspeed || 0) * 3.6 < 5;
+      break;
+    default:
+      matchFn = (r) => r.result.valid;
+  }
+
+  // Apply to checkboxes
+  resultsData.forEach((r, i) => {
+    const checked = matchFn(r, i);
+    const chk = document.getElementById('chk-' + i);
+    const row = document.getElementById('erow-' + i);
+    if (chk) chk.checked = checked;
+    if (row) row.classList.toggle('row-selected', checked);
+  });
+  syncMasterCheckbox();
+  updateSelectionToolbar();
+}
 
 // ─────────────────────────────────────────────
 // INIT
@@ -1694,16 +1815,29 @@ function calcCdA(effort, seg, weather) {
     return { valid: false, reason: `Onrealistisch CdA: ${CdA.toFixed(4)}` };
   }
 
+  // ── WIND-CORRECTED CdA ──
+  // Based on observed regression: every 1 km/h windeffect lowers measured CdA by 0.00672 m²
+  // (Pearson r = -0.55, derived from empirical data on this segment).
+  // CdA_corrected = CdA - slope * windEffect_kmh
+  // This removes the residual wind-correlation artefact from the measurement.
+  // slope = -0.00672 m² per km/h → subtracting slope*wind removes the bias:
+  //   if wind = -5 km/h (tailwind), raw CdA is artificially low by 5*0.00672=0.034 → corrected up
+  //   if wind = +5 km/h (headwind), raw CdA is artificially high → corrected down
+  const WIND_SLOPE = -0.00672; // m² per km/h windeffect (from regression)
+  const windEff_kmh = v_wind_head * 3.6;
+  const CdA_corrected = CdA - WIND_SLOPE * windEff_kmh;
+
   return {
     valid: true,
     CdA,
+    CdA_corrected: Math.max(0.05, Math.min(1.2, CdA_corrected)),
     rho,
     v_kmh: v * 3.6,
     v_air_kmh: v_air * 3.6,
-    v_wind_head_kmh: v_wind_head * 3.6,
-    windspeed_kmh: (weather.windspeed || 0) * 3.6,           // raw 10m for display
-    windspeed_2m_kmh: windMs * 3.6,                          // corrected to 2m
-    windAngleDiff: crossAngle,    // 0° = head/tailwind, 90° = pure crosswind
+    v_wind_head_kmh: windEff_kmh,
+    windspeed_kmh: (weather.windspeed || 0) * 3.6,
+    windspeed_2m_kmh: windMs * 3.6,
+    windAngleDiff: crossAngle,
     windComp,
     W_aero,
     W_rolling,
@@ -1854,6 +1988,10 @@ function renderResults() {
       </svg>
     </a>`;
 
+    const cdaCorrStr = res.valid
+      ? `<span class="cda-val" style="color:${cdaColor(res.CdA_corrected)}">${res.CdA_corrected.toFixed(4)}</span>`
+      : '—';
+
     const rowStyle = res.valid ? '' : 'opacity:0.45;';
     const checkedDefault = res.valid ? 'checked' : '';
     const rowIdx = resultsData.indexOf(r);
@@ -1872,6 +2010,7 @@ function renderResults() {
       <td onclick="window.open('${stravaUrl}','_blank')">${windEffStr}</td>
       <td onclick="window.open('${stravaUrl}','_blank')">${rhoStr}</td>
       <td onclick="window.open('${stravaUrl}','_blank')">${cdaStr}</td>
+      <td onclick="window.open('${stravaUrl}','_blank')">${cdaCorrStr}</td>
       <td onclick="window.open('${stravaUrl}','_blank')">${statusStr}</td>
     </tr>`;
   }).join('');
@@ -1900,7 +2039,7 @@ function renderResults() {
 // EXPORT CSV
 // ─────────────────────────────────────────────
 function exportCSV() {
-  const rows = [['Datum','Tijd_s','V_kmh','Watt','Temp_C','Druk_hPa','Vochtigheid_%','Wind_kmh','Windrichting_deg','Windeffect_kmh','Luchtdichtheid_kg_m3','CdA_m2','Geldig','Reden']];
+  const rows = [['Datum','Tijd_s','V_kmh','Watt','Temp_C','Druk_hPa','Vochtigheid_%','Wind_kmh','Windrichting_deg','Windeffect_kmh','Luchtdichtheid_kg_m3','CdA_m2','CdA_windgecorrigeerd_m2','Geldig','Reden']];
   resultsData.forEach(r => {
     const ef = r.effort;
     const w = r.weather;
@@ -1918,6 +2057,7 @@ function exportCSV() {
       res.valid ? res.v_wind_head_kmh.toFixed(2) : '',
       res.valid ? res.rho.toFixed(5) : '',
       res.valid ? res.CdA.toFixed(5) : '',
+      res.valid ? res.CdA_corrected?.toFixed(5) : '',
       res.valid ? 'Ja' : 'Nee',
       res.valid ? '' : (res.reason || '')
     ]);
@@ -1989,11 +2129,18 @@ function renderScatterChart(valid, mean, sd, selectedIndices) {
   const tMax = Math.max(...allDates);
   const tRange = tMax - tMin || 1;
 
-  // Y range — from valid CdA values
-  const cdas = valid.map(r => r.result.CdA);
+  // Y range — pick CdA value based on current scatter mode
+  const getCdA = r => scatterMode === 'corrected' ? r.result.CdA_corrected : r.result.CdA;
+  const cdas = valid.map(getCdA);
+  const cdaMean = cdas.reduce((a,b)=>a+b,0)/cdas.length;
+  const cdaSd   = Math.sqrt(cdas.reduce((s,v)=>s+(v-cdaMean)**2,0)/cdas.length);
   const cdaMin = Math.max(0, Math.min(...cdas) - 0.04);
   const cdaMax = Math.min(1.0, Math.max(...cdas) + 0.04);
   const cdaRange = cdaMax - cdaMin || 0.1;
+
+  // Override mean/sd with mode-specific values
+  const displayMean = cdaMean;
+  const displaySd   = cdaSd;
 
   function xPos(ts)  { return PAD.left + ((ts - tMin) / tRange) * cw; }
   function yPos(cda) { return PAD.top  + (1 - (cda - cdaMin) / cdaRange) * ch; }
@@ -2017,7 +2164,7 @@ function renderScatterChart(valid, mean, sd, selectedIndices) {
   }
 
   // ── MEAN LINE ──
-  const yMean = yPos(mean);
+  const yMean = yPos(displayMean);
   ctx.strokeStyle = ORANGE;
   ctx.lineWidth = 1.5;
   ctx.setLineDash([]);
@@ -2028,11 +2175,11 @@ function renderScatterChart(valid, mean, sd, selectedIndices) {
   ctx.fillStyle = ORANGE;
   ctx.font = `bold 9px "IBM Plex Mono", monospace`;
   ctx.textAlign = 'left';
-  ctx.fillText(`μ ${mean.toFixed(4)}`, PAD.left + cw + 3, yMean + 3);
+  ctx.fillText(`μ ${displayMean.toFixed(4)}`, PAD.left + cw + 3, yMean + 3);
 
   // ── ±1σ BAND ──
-  const yHi = yPos(mean + sd);
-  const yLo = yPos(mean - sd);
+  const yHi = yPos(displayMean + displaySd);
+  const yLo = yPos(displayMean - displaySd);
   ctx.fillStyle = 'rgba(255,107,53,0.07)';
   ctx.fillRect(PAD.left, yHi, cw, yLo - yHi);
   ctx.strokeStyle = 'rgba(255,107,53,0.25)';
@@ -2109,9 +2256,8 @@ function renderScatterChart(valid, mean, sd, selectedIndices) {
     const ts = new Date(r.effort.start_date_local).getTime();
     if (!ts) return;
     const x = xPos(ts);
-    const y = yPos(r.result.CdA);
+    const y = yPos(getCdA(r));  // mode-specific: raw or corrected
 
-    // Find original index in resultsData for selection check
     const origIdx = resultsData.indexOf(r);
     const isSelected = !hasSelection || selectedIndices.has(origIdx);
     const dotAlpha = isSelected ? 1 : 0.2;
@@ -2161,6 +2307,7 @@ function renderScatterChart(valid, mean, sd, selectedIndices) {
       windeff_sign: r.result.v_wind_head_kmh,
       rho:       r.result.rho.toFixed(4),
       cda:       r.result.CdA.toFixed(4),
+      cda_corr:  r.result.CdA_corrected?.toFixed(4) || '—',
       utcHour:   r.weather.hour ?? '?',
       fallback:  !!r.weather.fallback,
     });
@@ -2234,6 +2381,7 @@ function renderScatterChart(valid, mean, sd, selectedIndices) {
         ${row('Windeffect',    `<span style="color:${windColor}">${hit.windeff} km/h</span>`)}
         ${row('Luchtdichtheid',hit.rho + ' kg/m³')}
         ${rowHighlight('CdA', hit.cda + ' m²')}
+        ${rowHighlight('CdA wind-gecorr.', `<span style="color:var(--green)">${hit.cda_corr} m²</span>`)}
       </table>
     `;
 

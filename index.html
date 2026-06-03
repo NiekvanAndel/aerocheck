@@ -474,6 +474,28 @@ select option { background:var(--surface); }
 .tire-sub { font-size:9px; color:#3a6a3a; margin-top:2px; letter-spacing:1px; text-transform:uppercase; }
 .tire-crr { font-size:13px; color:var(--green); font-weight:600; }
 
+/* TOGGLE SWITCH */
+.toggle-switch { display:inline-flex; align-items:center; cursor:pointer; flex-shrink:0; }
+.toggle-switch input { display:none; }
+.toggle-track {
+  width:36px; height:20px;
+  background:var(--border);
+  border-radius:10px;
+  position:relative;
+  transition:background .2s;
+}
+.toggle-thumb {
+  position:absolute;
+  top:3px; left:3px;
+  width:14px; height:14px;
+  background:#fff;
+  border-radius:50%;
+  transition:transform .2s, background .2s;
+  box-shadow:0 1px 3px rgba(0,0,0,.3);
+}
+.toggle-switch input:checked + .toggle-track { background:var(--accent); }
+.toggle-switch input:checked + .toggle-track .toggle-thumb { transform:translateX(16px); }
+
 /* NOTE */
 .note { font-size:9px; color:var(--muted); letter-spacing:.5px; line-height:1.7; padding-top:14px; border-top:1px solid var(--border); margin-top:14px; }
 .note strong { color:var(--orange); }
@@ -795,6 +817,23 @@ td.check-cell, th.check-cell {
       De rijrichting (blauw) wordt automatisch berekend maar kan ook handmatig worden aangepast.
       Wind komt <em>uit</em> de aangegeven richting (meteorologische conventie).
     </div>
+
+    <!-- Crosswind filter toggle -->
+    <div style="margin-top:14px;display:flex;align-items:center;gap:12px;padding:12px 14px;
+                background:var(--surface2);border:1px solid var(--border);border-radius:2px;">
+      <label class="toggle-switch" title="Efforts met zijwind (windhoek >45°) uitsluiten van de berekening">
+        <input type="checkbox" id="crosswindFilterToggle" checked onchange="onCrosswindToggle()">
+        <span class="toggle-track">
+          <span class="toggle-thumb"></span>
+        </span>
+      </label>
+      <div>
+        <div style="font-size:10px;font-weight:600;color:var(--text);">Zijwindfilter</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:1px;" id="crosswindFilterDesc">
+          Aan — efforts met windhoek &gt;45° worden uitgesloten
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Tire spec -->
@@ -829,13 +868,35 @@ td.check-cell, th.check-cell {
 
   <div id="s-results-wrap" style="display:none">
 
+    <!-- CdA CONTEXT MODAL -->
+    <div id="cdaContextModal" style="display:none;position:fixed;inset:0;z-index:100;
+         background:rgba(0,0,0,.7);backdrop-filter:blur(3px);" onclick="hideCdAContext()">
+      <div onclick="event.stopPropagation()" style="
+           position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+           background:var(--surface);border:1px solid var(--accent);border-radius:3px;
+           padding:28px 28px 24px;max-width:440px;width:90%;font-family:'IBM Plex Mono',monospace;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
+          <div>
+            <div style="font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:4px;">JOUW CdA</div>
+            <div id="ctxValue" style="font-family:'Barlow Condensed',sans-serif;font-size:52px;font-weight:900;line-height:1;">—</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">m² (mediaan)</div>
+          </div>
+          <button onclick="hideCdAContext()" style="background:none;border:none;color:var(--muted);
+                  font-size:20px;cursor:pointer;padding:4px;">✕</button>
+        </div>
+        <div id="ctxQuality" style="margin-bottom:16px;"></div>
+        <div id="ctxRange" style="font-size:10px;line-height:1.9;color:var(--label);
+             border-top:1px solid var(--border);padding-top:14px;"></div>
+      </div>
+    </div>
+
     <!-- HERO RESULT -->
     <div class="card blue">
       <div class="card-title"><span class="card-dot"></span>CdA Resultaat</div>
       <div class="result-hero">
-        <div class="rh-label">// gemiddelde CdA over alle geldige efforts</div>
-        <div class="rh-val" id="resCdA">—</div>
-        <div class="rh-unit">m²</div>
+        <div class="rh-label" id="rhLabel">// mediaan CdA over alle geldige efforts</div>
+        <div class="rh-val" id="resCdA" onclick="showCdAContext()" style="cursor:pointer;" title="Klik voor context en interpretatie">—</div>
+        <div class="rh-unit">m² <span style="font-size:10px;color:var(--muted);">(mediaan · klik voor context)</span></div>
         <div class="rh-sd" id="resSd">± —</div>
         <div class="quality-badge" id="resQuality">—</div>
       </div>
@@ -843,10 +904,15 @@ td.check-cell, th.check-cell {
       <div class="stats-grid" id="statsGrid"></div>
 
       <!-- Histogram -->
-      <div class="chart-area">
+      <div class="chart-area" style="position:relative;">
         <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">// distributie CdA waarden</div>
         <div class="hist-bars" id="histBars"></div>
         <div class="hist-labels" id="histLabels"></div>
+        <!-- Histogram tooltip -->
+        <div id="histTooltip" style="display:none;position:absolute;background:var(--surface);border:1px solid var(--accent);
+             border-radius:2px;padding:8px 12px;font-size:10px;pointer-events:none;z-index:5;min-width:140px;
+             font-family:'IBM Plex Mono',monospace;color:var(--text);box-shadow:0 4px 16px rgba(0,0,0,.3);">
+        </div>
       </div>
 
       <div class="note">
@@ -860,12 +926,15 @@ td.check-cell, th.check-cell {
     <!-- CdA SCATTER CHART -->
     <div class="card blue" id="scatterCard">
       <div class="card-title"><span class="card-dot"></span>CdA over tijd</div>
-      <div style="position:relative;width:100%;height:260px;">
-        <canvas id="scatterCanvas" style="width:100%;height:260px;display:block;"></canvas>
+      <!-- Scrollable wrapper on mobile: min-width ensures enough pixels to show all data -->
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <div style="position:relative;min-width:600px;height:260px;">
+          <canvas id="scatterCanvas" style="width:100%;height:260px;display:block;"></canvas>
+        </div>
       </div>
       <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:9px;color:var(--muted);margin-top:10px;">
         <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:4px;"></span>Geldig effort (klik = open Strava)</span>
-        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);opacity:.4;margin-right:4px;"></span>Gefilterd (zijwind / geen vermogen)</span>
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);opacity:.4;margin-right:4px;"></span>Gefilterd</span>
         <span><span style="display:inline-block;width:24px;height:2px;background:var(--orange);margin-right:4px;vertical-align:middle;"></span>Gemiddelde</span>
         <span><span style="display:inline-block;width:24px;height:2px;border-top:1px dashed var(--muted);margin-right:4px;vertical-align:middle;"></span>±1σ</span>
       </div>
@@ -1042,6 +1111,7 @@ let allEfforts = [];
 let resultsData = [];
 let clientId = '';
 let clientSecret = '';
+let crosswindFilterEnabled = true; // default: on
 
 // ─────────────────────────────────────────────
 // INIT
@@ -1331,8 +1401,8 @@ function updateWindEffectDisplay() {
   el.textContent = eff.toFixed(2);
 
   let chipClass, chipText;
-  if (diff < 90 || diff > 270) { chipClass = 'head'; chipText = 'HEADWIND'; }
-  else if (diff > 90 && diff < 270) { chipClass = 'tail'; chipText = 'TAILWIND'; }
+  if (diff < 45 || diff > 315) { chipClass = 'head'; chipText = 'HEADWIND'; }
+  else if (diff > 135 && diff < 225) { chipClass = 'tail'; chipText = 'TAILWIND'; }
   else { chipClass = 'cross'; chipText = 'ZIJWIND'; }
 
   chip.innerHTML = `<span class="angle-chip ${chipClass}">${chipText}</span>
@@ -1394,6 +1464,8 @@ function windEffectComponent(weatherWindDir) {
 // ─────────────────────────────────────────────
 async function analyzeSegment() {
   if (!selectedSegment) return;
+  // Read toggle state before analysis
+  crosswindFilterEnabled = document.getElementById('crosswindFilterToggle').checked;
   showSection('s-analysis');
   document.getElementById('s-results-wrap').style.display = 'none';
 
@@ -1552,10 +1624,13 @@ function calcCdA(effort, seg, weather) {
   const v = d / t; // rider speed m/s
   const rho = calcAirDensity(weather.temp, weather.pressure, weather.humidity);
 
-  // Wind correction: effective wind speed along riding direction
-  // weather.windspeed is in m/s (API requested with wind_speed_unit=ms)
-  // windEffectComponent returns cos(angle): +1=headwind, -1=tailwind
-  const windMs = weather.windspeed || 0;                // already m/s
+  // Wind speed correction: measured at 10m, correct to 2m rider height
+  // Log wind profile: v(z) = v_ref * ln(z/z0) / ln(z_ref/z0)
+  // Roughness length z0 = 0.03m (short grass / open road typical)
+  // v_2m = v_10m * ln(2/0.03) / ln(10/0.03)
+  const Z0   = 0.03;   // roughness length (m) — open road / short grass
+  const correction2m = Math.log(2 / Z0) / Math.log(10 / Z0); // ≈ 0.810
+  const windMs = (weather.windspeed || 0) * correction2m;  // corrected to 2m, m/s
   const windComp = windEffectComponent(weather.winddirection || 0);
 
   // ── CROSSWIND FILTER ──
@@ -1592,7 +1667,7 @@ function calcCdA(effort, seg, weather) {
   if (diff > 180) diff = 360 - diff;                                  // fold to 0–180°
   const crossAngle = Math.min(diff, 180 - diff);                      // 0–90°: 0=aligned, 90=pure side
 
-  if (windMs > 1.0 && crossAngle > 90) {
+  if (crosswindFilterEnabled && windMs > 1.0 && crossAngle > 45) {
     return { valid: false, reason: `Zijwind gefilterd (${Math.round(crossAngle)}° van rij-as, max 45°)` };
   }
 
@@ -1626,7 +1701,8 @@ function calcCdA(effort, seg, weather) {
     v_kmh: v * 3.6,
     v_air_kmh: v_air * 3.6,
     v_wind_head_kmh: v_wind_head * 3.6,
-    windspeed_kmh: (weather.windspeed || 0) * 3.6,
+    windspeed_kmh: (weather.windspeed || 0) * 3.6,           // raw 10m for display
+    windspeed_2m_kmh: windMs * 3.6,                          // corrected to 2m
     windAngleDiff: crossAngle,    // 0° = head/tailwind, 90° = pure crosswind
     windComp,
     W_aero,
@@ -1656,17 +1732,22 @@ function renderResults() {
   const max = Math.max(...cdas);
   const median = [...cdas].sort((a,b)=>a-b)[Math.floor(cdas.length/2)];
 
-  // Hero
-  document.getElementById('resCdA').textContent = mean.toFixed(4);
-  document.getElementById('resSd').textContent = `± ${sd.toFixed(4)} m² (1σ)`;
+  // Hero — show MEDIAN (more robust than mean for skewed distributions)
+  document.getElementById('resCdA').textContent = median.toFixed(4);
+  document.getElementById('resSd').textContent = `± ${sd.toFixed(4)} m² (1σ)  ·  gem. ${mean.toFixed(4)}`;
 
-  const q = qualityLabel(mean);
+  const q = qualityLabel(median);
   const qBadge = document.getElementById('resQuality');
   qBadge.textContent = q.text;
   qBadge.style.background = q.bg;
   qBadge.style.color = q.color;
-  document.getElementById('resCdA').style.color = q.color;
-  document.getElementById('resCdA').style.textShadow = `0 0 50px ${q.color}30`;
+  // Hero color matches distribution color (cdaColor) for consistency
+  const heroColor = cdaColor(median);
+  document.getElementById('resCdA').style.color = heroColor;
+  document.getElementById('resCdA').style.textShadow = `0 0 50px ${heroColor}40`;
+  // Store for context modal
+  window._currentMedian = median;
+  window._currentStats  = { mean, sd, min, max, median, n: cdas.length };
 
   // Stats grid
   const avgSpeed = valid.reduce((s,r)=>s+r.result.v_kmh,0)/valid.length;
@@ -1678,9 +1759,9 @@ function renderResults() {
 
   document.getElementById('statsGrid').innerHTML = `
     <div class="stat-box"><div class="sl">Efforts</div><div class="sv">${valid.length}</div><div class="su">geldig / ${resultsData.length}</div></div>
-    <div class="stat-box"><div class="sl">Gemiddeld CdA</div><div class="sv">${mean.toFixed(4)}</div><div class="su">m²</div></div>
+    <div class="stat-box"><div class="sl">Mediaan CdA</div><div class="sv" style="color:${cdaColor(median)}">${median.toFixed(4)}</div><div class="su">m²</div></div>
     <div class="stat-box"><div class="sl">Std. Deviatie</div><div class="sv">${sd.toFixed(4)}</div><div class="su">m² (1σ)</div></div>
-    <div class="stat-box"><div class="sl">Mediaan</div><div class="sv">${median.toFixed(4)}</div><div class="su">m²</div></div>
+    <div class="stat-box"><div class="sl">Gemiddeld CdA</div><div class="sv">${mean.toFixed(4)}</div><div class="su">m²</div></div>
     <div class="stat-box"><div class="sl">Min / Max</div><div class="sv">${min.toFixed(4)}</div><div class="su">/ ${max.toFixed(4)} m²</div></div>
     <div class="stat-box"><div class="sl">Gem. Snelheid</div><div class="sv">${avgSpeed.toFixed(1)}</div><div class="su">km/h</div></div>
     <div class="stat-box"><div class="sl">Gem. Vermogen</div><div class="sv">${avgPower.toFixed(0)}</div><div class="su">W</div></div>
@@ -1691,22 +1772,41 @@ function renderResults() {
     <div class="stat-box"><div class="sl">Segmentrichting</div><div class="sv">${Math.round(segmentHeading)}°</div><div class="su">${degreesToCardinal(segmentHeading)}</div></div>
   `;
 
-  // Histogram
+  // Histogram — interactive bars
   const bins = 8;
   const binSize = (max - min) / bins || 0.01;
   const counts = Array(bins).fill(0);
-  cdas.forEach(v => {
+  const binEfforts = Array.from({length: bins}, () => []);
+  cdas.forEach((v, i) => {
     const b = Math.min(Math.floor((v - min) / binSize), bins - 1);
     counts[b]++;
+    binEfforts[b].push(valid[i]);
   });
   const maxCount = Math.max(...counts, 1);
-  document.getElementById('histBars').innerHTML = counts.map((c,i) => {
-    const pct = (c / maxCount * 100).toFixed(0);
-    const center = min + (i + 0.5) * binSize;
-    const col = cdaColor(center);
-    return `<div class="hist-bar" style="height:${pct}%;background:${col}" title="${c} efforts rond ${center.toFixed(4)} m²"></div>`;
+
+  document.getElementById('histBars').innerHTML = counts.map((c, i) => {
+    const pct   = (c / maxCount * 100).toFixed(0);
+    const lo    = min + i * binSize;
+    const hi    = lo + binSize;
+    const center = (lo + hi) / 2;
+    const col   = cdaColor(center);
+    return `<div class="hist-bar" data-bin="${i}"
+      style="height:${pct}%;background:${col};cursor:${c>0?'pointer':'default'};"
+      onclick="showHistBin(${i})"
+      onmouseenter="showHistBin(${i}, event)"
+      onmouseleave="hideHistTooltip()"
+      title="${c} efforts · ${lo.toFixed(3)}–${hi.toFixed(3)} m²"></div>`;
   }).join('');
-  document.getElementById('histLabels').innerHTML = `<span>${min.toFixed(3)}</span><span>${mean.toFixed(3)}</span><span>${max.toFixed(3)}</span>`;
+
+  document.getElementById('histLabels').innerHTML =
+    `<span>${min.toFixed(3)}</span><span>${mean.toFixed(3)}</span><span>${max.toFixed(3)}</span>`;
+
+  // Store bin data for tooltip access
+  window._histBinData = binEfforts.map((efforts, i) => ({
+    lo:  min + i * binSize,
+    hi:  min + (i+1) * binSize,
+    efforts
+  }));
 
   // ── SCATTER CHART ──
   renderScatterChart(valid, mean, sd, undefined);
@@ -2183,11 +2283,69 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 // ─────────────────────────────────────────────
+function showHistBin(binIdx, event) {
+  const data = window._histBinData;
+  if (!data || !data[binIdx]) return;
+  const bin = data[binIdx];
+  const tip = document.getElementById('histTooltip');
+  if (!tip) return;
+
+  const dates = bin.efforts
+    .map(r => r.effort.start_date_local?.substring(0,10) || '—')
+    .slice(0, 6) // max 6 dates to keep tooltip compact
+    .join('<br>');
+  const more = bin.efforts.length > 6 ? `<div style="color:var(--muted);margin-top:3px;">+ ${bin.efforts.length - 6} meer</div>` : '';
+
+  tip.innerHTML = `
+    <div style="color:var(--accent);font-family:'Barlow Condensed',sans-serif;font-size:13px;
+                font-weight:700;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px;">
+      ${bin.efforts.length} effort${bin.efforts.length !== 1 ? 's' : ''}
+    </div>
+    <div style="font-size:9px;color:var(--muted);margin-bottom:4px;">
+      ${bin.lo.toFixed(4)} – ${bin.hi.toFixed(4)} m²
+    </div>
+    ${bin.efforts.length > 0
+      ? `<div style="font-size:9px;color:var(--label);line-height:1.8;">${dates}${more}</div>`
+      : `<div style="font-size:9px;color:var(--muted);">Geen efforts</div>`
+    }
+  `;
+
+  // Position tooltip above the bar
+  if (event) {
+    const area = document.querySelector('.chart-area');
+    const areaRect = area.getBoundingClientRect();
+    const barEl = document.querySelector(`[data-bin="${binIdx}"]`);
+    const barRect = barEl.getBoundingClientRect();
+    tip.style.display = 'block';
+    const tipW = 160;
+    let tx = barRect.left - areaRect.left + barRect.width / 2 - tipW / 2;
+    tx = Math.max(4, Math.min(tx, areaRect.width - tipW - 4));
+    const ty = barRect.top - areaRect.top - tip.offsetHeight - 8;
+    tip.style.left  = tx + 'px';
+    tip.style.top   = Math.max(4, ty) + 'px';
+    tip.style.width = tipW + 'px';
+  }
+}
+
+function hideHistTooltip() {
+  const tip = document.getElementById('histTooltip');
+  if (tip) tip.style.display = 'none';
+}
+
+function onCrosswindToggle() {
+  crosswindFilterEnabled = document.getElementById('crosswindFilterToggle').checked;
+  const desc = document.getElementById('crosswindFilterDesc');
+  desc.textContent = crosswindFilterEnabled
+    ? 'Aan — efforts met windhoek >45° worden uitgesloten'
+    : 'Uit — alle efforts worden meegenomen ongeacht windhoek';
+}
+
 function recomputeWithNewHeading() {
   if (!resultsData.length || !selectedSegment) return;
-  setStatus('loading', `Herberekeningmet segmentrichting ${Math.round(segmentHeading)}° (${degreesToCardinal(segmentHeading)})...`);
+  // Re-read toggle state before recomputing
+  crosswindFilterEnabled = document.getElementById('crosswindFilterToggle').checked;
+  setStatus('loading', `Herberekening met segmentrichting ${Math.round(segmentHeading)}° (${degreesToCardinal(segmentHeading)})...`);
 
-  // Recompute CdA for all efforts with current segmentHeading
   resultsData = resultsData.map(r => ({
     effort: r.effort,
     weather: r.weather,
@@ -2353,7 +2511,6 @@ function updateSelectionToolbar() {
 
 function applySelectionToChart() {
   const indices = new Set(getSelectedIndices());
-  // Build a filtered view: only selected rows that have valid CdA
   const selected = resultsData.filter((r, i) => indices.has(i) && r.result.valid);
   if (!selected.length) return;
 
@@ -2361,26 +2518,137 @@ function applySelectionToChart() {
   const mean = cdas.reduce((a,b)=>a+b,0)/cdas.length;
   const variance = cdas.reduce((s,v)=>s+(v-mean)**2,0)/cdas.length;
   const sd = Math.sqrt(variance);
+  const sorted = [...cdas].sort((a,b)=>a-b);
+  const median = sorted[Math.floor(sorted.length/2)];
+  const min = sorted[0], max = sorted[sorted.length-1];
 
-  // Update hero stats
-  const q = qualityLabel(mean);
-  document.getElementById('resCdA').textContent = mean.toFixed(4);
-  document.getElementById('resCdA').style.color = q.color;
-  document.getElementById('resCdA').style.textShadow = `0 0 50px ${q.color}30`;
-  document.getElementById('resSd').textContent = `± ${sd.toFixed(4)} m² (1σ) — ${selected.length} efforts geselecteerd`;
+  // Update hero (median)
+  const heroColor = cdaColor(median);
+  const q = qualityLabel(median);
+  document.getElementById('resCdA').textContent = median.toFixed(4);
+  document.getElementById('resCdA').style.color = heroColor;
+  document.getElementById('resCdA').style.textShadow = `0 0 50px ${heroColor}40`;
+  document.getElementById('resSd').textContent = `± ${sd.toFixed(4)} m² (1σ)  ·  gem. ${mean.toFixed(4)}  ·  ${selected.length} efforts`;
+  document.getElementById('rhLabel').textContent = `// mediaan CdA — ${selected.length} geselecteerde efforts`;
   const qBadge = document.getElementById('resQuality');
   qBadge.textContent = q.text + ' (selectie)';
   qBadge.style.background = q.bg;
   qBadge.style.color = q.color;
+  window._currentMedian = median;
+  window._currentStats  = { mean, sd, min, max, median, n: cdas.length };
 
-  // Update label
-  document.querySelector('.rh-label').textContent = `// gemiddelde CdA — ${selected.length} geselecteerde efforts`;
+  // Update stats grid
+  const avgSpeed = selected.reduce((s,r)=>s+r.result.v_kmh,0)/selected.length;
+  const avgPower = selected.reduce((s,r)=>s+r.effort.average_watts,0)/selected.length;
+  const avgTemp  = selected.reduce((s,r)=>s+r.weather.temp,0)/selected.length;
+  const avgRho   = selected.reduce((s,r)=>s+r.result.rho,0)/selected.length;
+  const avgWindEff = selected.reduce((s,r)=>s+r.result.v_wind_head_kmh,0)/selected.length;
+  const avgWindSpd = selected.reduce((s,r)=>s+(r.weather.windspeed||0),0)/selected.length;
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat-box"><div class="sl">Efforts</div><div class="sv">${selected.length}</div><div class="su">geselecteerd</div></div>
+    <div class="stat-box"><div class="sl">Mediaan CdA</div><div class="sv" style="color:${heroColor}">${median.toFixed(4)}</div><div class="su">m²</div></div>
+    <div class="stat-box"><div class="sl">Std. Deviatie</div><div class="sv">${sd.toFixed(4)}</div><div class="su">m² (1σ)</div></div>
+    <div class="stat-box"><div class="sl">Gemiddeld CdA</div><div class="sv">${mean.toFixed(4)}</div><div class="su">m²</div></div>
+    <div class="stat-box"><div class="sl">Min / Max</div><div class="sv">${min.toFixed(4)}</div><div class="su">/ ${max.toFixed(4)} m²</div></div>
+    <div class="stat-box"><div class="sl">Gem. Snelheid</div><div class="sv">${avgSpeed.toFixed(1)}</div><div class="su">km/h</div></div>
+    <div class="stat-box"><div class="sl">Gem. Vermogen</div><div class="sv">${avgPower.toFixed(0)}</div><div class="su">W</div></div>
+    <div class="stat-box"><div class="sl">Gem. Temp.</div><div class="sv">${avgTemp.toFixed(1)}</div><div class="su">°C</div></div>
+    <div class="stat-box"><div class="sl">Gem. Luchtdicht.</div><div class="sv">${avgRho.toFixed(4)}</div><div class="su">kg/m³</div></div>
+    <div class="stat-box"><div class="sl">Gem. Windsnelh.</div><div class="sv">${(avgWindSpd * 3.6).toFixed(1)}</div><div class="su">km/h</div></div>
+    <div class="stat-box"><div class="sl">Gem. Windeffect</div><div class="sv" style="color:${avgWindEff>1?'var(--red)':avgWindEff<-1?'var(--green)':'var(--label)'}">${avgWindEff>=0?'+':''}${avgWindEff.toFixed(1)}</div><div class="su">km/h</div></div>
+    <div class="stat-box"><div class="sl">Segmentrichting</div><div class="sv">${Math.round(segmentHeading)}°</div><div class="su">${degreesToCardinal(segmentHeading)}</div></div>
+  `;
 
-  // Redraw chart with selected subset highlighted
+  // Update histogram
+  const bins = 8;
+  const binSize = (max - min) / bins || 0.01;
+  const counts = Array(bins).fill(0);
+  const binEfforts = Array.from({length: bins}, () => []);
+  cdas.forEach((v, i) => {
+    const b = Math.min(Math.floor((v - min) / binSize), bins - 1);
+    counts[b]++;
+    binEfforts[b].push(selected[i]);
+  });
+  const maxCount = Math.max(...counts, 1);
+  document.getElementById('histBars').innerHTML = counts.map((c, i) => {
+    const pct = (c / maxCount * 100).toFixed(0);
+    const lo = min + i * binSize, hi = lo + binSize;
+    const col = cdaColor((lo+hi)/2);
+    return `<div class="hist-bar" data-bin="${i}"
+      style="height:${pct}%;background:${col};cursor:${c>0?'pointer':'default'};"
+      onclick="showHistBin(${i})" onmouseenter="showHistBin(${i},event)" onmouseleave="hideHistTooltip()"
+      title="${c} efforts · ${lo.toFixed(3)}–${hi.toFixed(3)} m²"></div>`;
+  }).join('');
+  document.getElementById('histLabels').innerHTML =
+    `<span>${min.toFixed(3)}</span><span>${median.toFixed(3)}</span><span>${max.toFixed(3)}</span>`;
+  window._histBinData = binEfforts.map((efforts, i) => ({
+    lo: min + i * binSize, hi: min + (i+1) * binSize, efforts
+  }));
+
+  // Redraw scatter chart
   renderScatterChart(selected, mean, sd, indices);
-
-  // Scroll to chart
   document.getElementById('scatterCard').scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function showCdAContext() {
+  const stats = window._currentStats;
+  const cda   = window._currentMedian;
+  if (cda == null) return;
+
+  const modal = document.getElementById('cdaContextModal');
+  const q     = qualityLabel(cda);
+  const col   = cdaColor(cda);
+
+  document.getElementById('ctxValue').textContent  = cda.toFixed(4);
+  document.getElementById('ctxValue').style.color  = col;
+
+  document.getElementById('ctxQuality').innerHTML = `
+    <span class="quality-badge" style="background:${q.bg};color:${q.color};font-size:12px;padding:5px 14px;">
+      ${q.text}
+    </span>`;
+
+  // Reference ranges with visual position indicator
+  const ranges = [
+    { label: 'Aero/TT positie',   lo: 0.16, hi: 0.24, note: 'Lage TT-stuur, gestroomlijnde helm' },
+    { label: 'Race drops',         lo: 0.24, hi: 0.30, note: 'Drops, plat rug, elbogen naar binnen' },
+    { label: 'Hoods/bovenbalk',    lo: 0.30, hi: 0.38, note: 'Normale rijpositie op hoods' },
+    { label: 'Rechtop/comfort',    lo: 0.38, hi: 0.48, note: 'Opgerichte positie, jas, rugzak' },
+  ];
+
+  const inRange = ranges.find(r => cda >= r.lo && cda < r.hi);
+  const pctInRange = inRange
+    ? Math.round(((cda - inRange.lo) / (inRange.hi - inRange.lo)) * 100)
+    : null;
+
+  let rangeHtml = `<div style="margin-bottom:10px;color:var(--text);font-size:10px;">
+    <strong>Spreiding in jouw metingen:</strong><br>
+    min ${stats.min.toFixed(4)} · mediaan ${stats.median.toFixed(4)} · max ${stats.max.toFixed(4)} m²
+    &nbsp;·&nbsp; σ ${stats.sd.toFixed(4)} · n = ${stats.n}
+  </div>`;
+
+  rangeHtml += ranges.map(r => {
+    const isHere = cda >= r.lo && cda < r.hi;
+    const bg = isHere ? `background:${q.bg};border-color:${col};` : '';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;
+                 border:1px solid ${isHere ? col : 'var(--border)'};
+                 border-radius:2px;margin-bottom:4px;${bg}">
+      <div style="font-size:10px;color:${isHere ? col : 'var(--label)'};flex:1;">
+        <strong>${r.label}</strong><br>
+        <span style="color:var(--muted);font-size:9px;">${r.note}</span>
+      </div>
+      <div style="font-size:9px;color:var(--muted);white-space:nowrap;">
+        ${r.lo.toFixed(2)}–${r.hi.toFixed(2)} m²
+        ${isHere ? `<br><span style="color:${col}">← jij (${pctInRange}% in bereik)</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('ctxRange').innerHTML = rangeHtml;
+  modal.style.display = 'block';
+}
+
+function hideCdAContext() {
+  document.getElementById('cdaContextModal').style.display = 'none';
 }
 
 function escHtml(str) {

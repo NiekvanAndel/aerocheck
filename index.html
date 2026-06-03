@@ -1160,19 +1160,44 @@ let scatterMode = 'raw'; // 'raw' | 'corrected'
 
 function setScatterMode(mode) {
   scatterMode = mode;
-  document.getElementById('scatterToggleRaw').style.background   = mode === 'raw' ? 'var(--accent)' : 'transparent';
-  document.getElementById('scatterToggleRaw').style.color        = mode === 'raw' ? 'var(--bg)'     : 'var(--label)';
-  document.getElementById('scatterToggleRaw').style.borderColor  = mode === 'raw' ? 'var(--accent)' : 'var(--border)';
-  document.getElementById('scatterToggleCorr').style.background  = mode === 'corrected' ? 'var(--accent)' : 'transparent';
-  document.getElementById('scatterToggleCorr').style.color       = mode === 'corrected' ? 'var(--bg)'     : 'var(--label)';
-  document.getElementById('scatterToggleCorr').style.borderColor = mode === 'corrected' ? 'var(--accent)' : 'var(--border)';
-  // Redraw with current valid data
+  const btnRaw  = document.getElementById('scatterToggleRaw');
+  const btnCorr = document.getElementById('scatterToggleCorr');
+  btnRaw.style.background   = mode === 'raw' ? 'var(--accent)' : 'transparent';
+  btnRaw.style.color        = mode === 'raw' ? 'var(--bg)'     : 'var(--label)';
+  btnRaw.style.borderColor  = mode === 'raw' ? 'var(--accent)' : 'var(--border)';
+  btnCorr.style.background  = mode === 'corrected' ? 'var(--accent)' : 'transparent';
+  btnCorr.style.color       = mode === 'corrected' ? 'var(--bg)'     : 'var(--label)';
+  btnCorr.style.borderColor = mode === 'corrected' ? 'var(--accent)' : 'var(--border)';
+
   if (!resultsData.length) return;
   const valid = resultsData.filter(r => r.result.valid);
   if (!valid.length) return;
-  const vals = valid.map(r => scatterMode === 'corrected' ? r.result.CdA_corrected : r.result.CdA);
-  const mean = vals.reduce((a,b)=>a+b,0)/vals.length;
-  const sd   = Math.sqrt(vals.reduce((s,v)=>s+(v-mean)**2,0)/vals.length);
+
+  const vals   = valid.map(r => mode === 'corrected' ? r.result.CdA_corrected : r.result.CdA);
+  const sorted = [...vals].sort((a,b)=>a-b);
+  const mean   = vals.reduce((a,b)=>a+b,0)/vals.length;
+  const median = sorted[Math.floor(sorted.length/2)];
+  const sd     = Math.sqrt(vals.reduce((s,v)=>s+(v-mean)**2,0)/vals.length);
+
+  // Update hero to reflect the active mode
+  const heroColor = cdaColor(median);
+  const q = qualityLabel(median);
+  document.getElementById('resCdA').textContent = median.toFixed(4);
+  document.getElementById('resCdA').style.color = heroColor;
+  document.getElementById('resCdA').style.textShadow = `0 0 50px ${heroColor}40`;
+  document.getElementById('resSd').textContent =
+    `± ${sd.toFixed(4)} m² (1σ)  ·  gem. ${mean.toFixed(4)}${mode === 'corrected' ? '  ·  wind-gecorr.' : ''}`;
+  document.getElementById('rhLabel').textContent =
+    mode === 'corrected'
+      ? '// mediaan CdA wind-gecorrigeerd'
+      : '// mediaan CdA over alle geldige efforts';
+  const qBadge = document.getElementById('resQuality');
+  qBadge.textContent = q.text + (mode === 'corrected' ? ' (wind-gecorr.)' : '');
+  qBadge.style.background = q.bg;
+  qBadge.style.color = q.color;
+  window._currentMedian = median;
+  window._currentStats  = { mean, sd, min: sorted[0], max: sorted[sorted.length-1], median, n: vals.length };
+
   renderScatterChart(valid, mean, sd, undefined);
 }
 
@@ -1891,12 +1916,23 @@ function renderResults() {
   const avgWindEff = valid.reduce((s,r)=>s+r.result.v_wind_head_kmh,0)/valid.length;
   const avgWindSpd = valid.reduce((s,r)=>s+(r.weather.windspeed||0),0)/valid.length; // m/s
 
+  const corrVals   = valid.map(r => r.result.CdA_corrected).filter(Boolean);
+  const corrSorted = [...corrVals].sort((a,b)=>a-b);
+  const corrMedian = corrSorted[Math.floor(corrSorted.length/2)];
+  const corrMean   = corrVals.reduce((a,b)=>a+b,0)/corrVals.length;
+  const corrSd     = Math.sqrt(corrVals.reduce((s,v)=>s+(v-corrMean)**2,0)/corrVals.length);
+  const corrMin    = corrSorted[0], corrMax = corrSorted[corrSorted.length-1];
+
   document.getElementById('statsGrid').innerHTML = `
     <div class="stat-box"><div class="sl">Efforts</div><div class="sv">${valid.length}</div><div class="su">geldig / ${resultsData.length}</div></div>
-    <div class="stat-box"><div class="sl">Mediaan CdA</div><div class="sv" style="color:${cdaColor(median)}">${median.toFixed(4)}</div><div class="su">m²</div></div>
-    <div class="stat-box"><div class="sl">Std. Deviatie</div><div class="sv">${sd.toFixed(4)}</div><div class="su">m² (1σ)</div></div>
-    <div class="stat-box"><div class="sl">Gemiddeld CdA</div><div class="sv">${mean.toFixed(4)}</div><div class="su">m²</div></div>
-    <div class="stat-box"><div class="sl">Min / Max</div><div class="sv">${min.toFixed(4)}</div><div class="su">/ ${max.toFixed(4)} m²</div></div>
+    <div class="stat-box"><div class="sl">Mediaan CdA</div><div class="sv" style="color:${cdaColor(median)}">${median.toFixed(4)}</div><div class="su">m² (ruw)</div></div>
+    <div class="stat-box"><div class="sl">Mediaan CdA wind-gecorr.</div><div class="sv" style="color:${cdaColor(corrMedian)}">${corrMedian.toFixed(4)}</div><div class="su">m² (gecorrigeerd)</div></div>
+    <div class="stat-box"><div class="sl">Std. Deviatie ruw</div><div class="sv">${sd.toFixed(4)}</div><div class="su">m² (1σ)</div></div>
+    <div class="stat-box"><div class="sl">Std. Deviatie gecorr.</div><div class="sv">${corrSd.toFixed(4)}</div><div class="su">m² (1σ)</div></div>
+    <div class="stat-box"><div class="sl">Gemiddeld CdA</div><div class="sv">${mean.toFixed(4)}</div><div class="su">m² (ruw)</div></div>
+    <div class="stat-box"><div class="sl">Gemiddeld CdA gecorr.</div><div class="sv">${corrMean.toFixed(4)}</div><div class="su">m² (gecorrigeerd)</div></div>
+    <div class="stat-box"><div class="sl">Min / Max ruw</div><div class="sv">${min.toFixed(4)}</div><div class="su">/ ${max.toFixed(4)} m²</div></div>
+    <div class="stat-box"><div class="sl">Min / Max gecorr.</div><div class="sv">${corrMin.toFixed(4)}</div><div class="su">/ ${corrMax.toFixed(4)} m²</div></div>
     <div class="stat-box"><div class="sl">Gem. Snelheid</div><div class="sv">${avgSpeed.toFixed(1)}</div><div class="su">km/h</div></div>
     <div class="stat-box"><div class="sl">Gem. Vermogen</div><div class="sv">${avgPower.toFixed(0)}</div><div class="su">W</div></div>
     <div class="stat-box"><div class="sl">Gem. Temp.</div><div class="sv">${avgTemp.toFixed(1)}</div><div class="su">°C</div></div>
@@ -2692,12 +2728,23 @@ function applySelectionToChart() {
   const avgRho   = selected.reduce((s,r)=>s+r.result.rho,0)/selected.length;
   const avgWindEff = selected.reduce((s,r)=>s+r.result.v_wind_head_kmh,0)/selected.length;
   const avgWindSpd = selected.reduce((s,r)=>s+(r.weather.windspeed||0),0)/selected.length;
+  const selCorrVals   = selected.map(r => r.result.CdA_corrected).filter(Boolean);
+  const selCorrSorted = [...selCorrVals].sort((a,b)=>a-b);
+  const selCorrMedian = selCorrSorted[Math.floor(selCorrSorted.length/2)];
+  const selCorrMean   = selCorrVals.reduce((a,b)=>a+b,0)/selCorrVals.length;
+  const selCorrSd     = Math.sqrt(selCorrVals.reduce((s,v)=>s+(v-selCorrMean)**2,0)/selCorrVals.length);
+  const selCorrMin    = selCorrSorted[0], selCorrMax = selCorrSorted[selCorrSorted.length-1];
+
   document.getElementById('statsGrid').innerHTML = `
     <div class="stat-box"><div class="sl">Efforts</div><div class="sv">${selected.length}</div><div class="su">geselecteerd</div></div>
-    <div class="stat-box"><div class="sl">Mediaan CdA</div><div class="sv" style="color:${heroColor}">${median.toFixed(4)}</div><div class="su">m²</div></div>
-    <div class="stat-box"><div class="sl">Std. Deviatie</div><div class="sv">${sd.toFixed(4)}</div><div class="su">m² (1σ)</div></div>
-    <div class="stat-box"><div class="sl">Gemiddeld CdA</div><div class="sv">${mean.toFixed(4)}</div><div class="su">m²</div></div>
-    <div class="stat-box"><div class="sl">Min / Max</div><div class="sv">${min.toFixed(4)}</div><div class="su">/ ${max.toFixed(4)} m²</div></div>
+    <div class="stat-box"><div class="sl">Mediaan CdA</div><div class="sv" style="color:${heroColor}">${median.toFixed(4)}</div><div class="su">m² (ruw)</div></div>
+    <div class="stat-box"><div class="sl">Mediaan CdA wind-gecorr.</div><div class="sv" style="color:${cdaColor(selCorrMedian)}">${selCorrMedian.toFixed(4)}</div><div class="su">m² (gecorrigeerd)</div></div>
+    <div class="stat-box"><div class="sl">Std. Deviatie ruw</div><div class="sv">${sd.toFixed(4)}</div><div class="su">m² (1σ)</div></div>
+    <div class="stat-box"><div class="sl">Std. Deviatie gecorr.</div><div class="sv">${selCorrSd.toFixed(4)}</div><div class="su">m² (1σ)</div></div>
+    <div class="stat-box"><div class="sl">Gemiddeld CdA</div><div class="sv">${mean.toFixed(4)}</div><div class="su">m² (ruw)</div></div>
+    <div class="stat-box"><div class="sl">Gemiddeld CdA gecorr.</div><div class="sv">${selCorrMean.toFixed(4)}</div><div class="su">m² (gecorrigeerd)</div></div>
+    <div class="stat-box"><div class="sl">Min / Max ruw</div><div class="sv">${min.toFixed(4)}</div><div class="su">/ ${max.toFixed(4)} m²</div></div>
+    <div class="stat-box"><div class="sl">Min / Max gecorr.</div><div class="sv">${selCorrMin.toFixed(4)}</div><div class="su">/ ${selCorrMax.toFixed(4)} m²</div></div>
     <div class="stat-box"><div class="sl">Gem. Snelheid</div><div class="sv">${avgSpeed.toFixed(1)}</div><div class="su">km/h</div></div>
     <div class="stat-box"><div class="sl">Gem. Vermogen</div><div class="sv">${avgPower.toFixed(0)}</div><div class="su">W</div></div>
     <div class="stat-box"><div class="sl">Gem. Temp.</div><div class="sv">${avgTemp.toFixed(1)}</div><div class="su">°C</div></div>
